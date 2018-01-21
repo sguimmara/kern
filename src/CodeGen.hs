@@ -10,6 +10,8 @@ module CodeGen
 import AST
 
 import Data.Text    (pack, unpack)
+import Data.Char    (toLower)
+import Data.List    (intercalate)
 
 
 ------------------------------------------------------------------------
@@ -63,10 +65,7 @@ data Operand = OpValue Int
 
 instance Show Operand where
     show (OpValue x) = "$" ++ show x
-    show (OpReg reg) = "%" ++ case reg of
-                                     Eax -> "eax"
-                                     Rbp -> "rbp"
-                                     Rsp -> "rsp"
+    show (OpReg reg) = "%" ++ (map toLower (show reg))
 
 data ObjType = TyFunction
                deriving (Eq)
@@ -81,30 +80,47 @@ instance Show Size where
     show L = "l"
     show Q = "q"
 
-data Asm = Mov Size Operand Operand
-         | Push Size Operand
-         | Pop Size Operand
-         | Global String
-         | Type String ObjType
-         | Label String
+data Asm = Label String
+         -- Sections ---------------------------------------------------
          | SText
          | SFile String
+         | Global String
+         | Type String ObjType
+         -- Instructions------------------------------------------------
          | Ret
+         | Mov Size Operand Operand
+         | Pop Size Operand
+         | Push Size Operand
            deriving (Eq)
 
-ind :: String
-ind = "    "
+ind = "\t"
+
+tab = "\t"
+fmt []     = ""
+fmt [x] = tab ++ x
+fmt (x:xs) = tab ++ x ++ fmt xs
+
+lst :: [String] -> String
+lst = intercalate ", "
+
+sized :: String -> Size -> String
+sized x s = x ++ show s
+
+sh x = show x
 
 instance Show Asm where
-    show Ret             = ind ++ "ret"
-    show (Mov s op1 op2) = ind ++ "mov" ++ (show s) ++ "\t" ++ show op1 ++ ", " ++ show op2
-    show (Global s)      = ind ++ ".globl\t" ++ s
-    show (Label s)       = s ++ ":"
-    show (Pop s op)      = ind ++ "pop" ++ (show s) ++ "\t" ++ (show op)
-    show (Push s op)     = ind ++ "push" ++ (show s) ++ "\t" ++ (show op)
-    show SText           = ind ++ ".text"
-    show (SFile file)    = ind ++ ".file\t\"" ++ file ++ "\""
-    show (Type s ty)     = ind ++ ".type\t" ++ s ++ ", " ++ (show ty)
+    -- Misc ------------------------------------------------------------
+    show (Label s)          = s ++ ":"
+    -- Sections --------------------------------------------------------
+    show SText              = fmt [ ".text" ]
+    show (SFile file)       = fmt [ ".file", file ]
+    show (Type s ty)        = fmt [ ".type", lst [s, sh ty] ]
+    show (Global s)         = fmt [ ".globl", s ]
+    -- Instructions-----------------------------------------------------
+    show Ret                = fmt [ "ret" ]
+    show (Mov s op1 op2)    = fmt [ sized "mov" s, lst [sh op1, sh op2] ]
+    show (Pop s op)         = fmt [ sized "pop" s, sh op ]
+    show (Push s op)        = fmt [ sized "push" s, sh op ]
 
 toAssembly :: [Asm] -> String
 toAssembly = unlines . (map show)
