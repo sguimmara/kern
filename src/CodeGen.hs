@@ -18,14 +18,15 @@ import Data.Text    (pack, unpack)
 
 eax = OpReg Eax
 rbp = OpReg Rbp
+rsp = OpReg Rsp
 
 class Emittable a where
     emit :: a -> [Asm]
 
 
 instance Emittable Return where
-    emit (ReturnLit lit) = [ Movl (emitLiteral lit) eax
-                           , Popq rbp
+    emit (ReturnLit lit) = [ Mov L (emitLiteral lit) eax
+                           , Pop Q rbp
                            , Ret
                            ]
 
@@ -43,7 +44,9 @@ fprolog (Func _ name _ _) = let asmname = unpack name in
                             ]
 
 fbody :: Function -> [Asm]
-fbody (Func _ _ _ stmts) = [ Pushq rbp ] ++ concatMap emit stmts
+fbody (Func _ _ _ stmts) = [ Push Q rbp
+                           , Mov Q rsp rbp
+                           ] ++ concatMap emit stmts
 
 instance Emittable TranslationUnit where
     emit (TranslationUnit file funcs) = [ SFile file
@@ -51,7 +54,7 @@ instance Emittable TranslationUnit where
 
 emitLiteral (IntLit x) = OpValue x
 
-data Register = Eax | Rbp
+data Register = Eax | Rbp | Rsp
                 deriving (Show, Eq)
 
 data Operand = OpValue Int
@@ -63,6 +66,7 @@ instance Show Operand where
     show (OpReg reg) = "%" ++ case reg of
                                      Eax -> "eax"
                                      Rbp -> "rbp"
+                                     Rsp -> "rsp"
 
 data ObjType = TyFunction
                deriving (Eq)
@@ -70,9 +74,16 @@ data ObjType = TyFunction
 instance Show ObjType where
     show TyFunction = "@function"
 
-data Asm = Movl Operand Operand
-         | Pushq Operand
-         | Popq Operand
+data Size = L | Q
+            deriving (Eq)
+
+instance Show Size where
+    show L = "l"
+    show Q = "q"
+
+data Asm = Mov Size Operand Operand
+         | Push Size Operand
+         | Pop Size Operand
          | Global String
          | Type String ObjType
          | Label String
@@ -85,15 +96,15 @@ ind :: String
 ind = "    "
 
 instance Show Asm where
-    show (Movl op1 op2) = ind ++ "movl " ++ show op1 ++ ", " ++ show op2
-    show Ret            = ind ++ "ret"
-    show (Global s)     = ind ++ ".globl " ++ s
-    show (Label s)      = s ++ ":"
-    show (Popq op)      = ind ++ "popq\t" ++ (show op)
-    show (Pushq op)      = ind ++ "pushq\t" ++ (show op)
-    show SText          = ind ++ ".text"
-    show (SFile file)   = ind ++ ".file \"" ++ file ++ "\""
-    show (Type s ty)    = ind ++ ".type " ++ s ++ ", " ++ (show ty)
+    show Ret             = ind ++ "ret"
+    show (Mov s op1 op2) = ind ++ "mov" ++ (show s) ++ "\t" ++ show op1 ++ ", " ++ show op2
+    show (Global s)      = ind ++ ".globl\t" ++ s
+    show (Label s)       = s ++ ":"
+    show (Pop s op)      = ind ++ "pop" ++ (show s) ++ "\t" ++ (show op)
+    show (Push s op)     = ind ++ "push" ++ (show s) ++ "\t" ++ (show op)
+    show SText           = ind ++ ".text"
+    show (SFile file)    = ind ++ ".file\t\"" ++ file ++ "\""
+    show (Type s ty)     = ind ++ ".type\t" ++ s ++ ", " ++ (show ty)
 
 toAssembly :: [Asm] -> String
 toAssembly = unlines . (map show)
