@@ -24,13 +24,18 @@ instance Emittable Statement where
 
 instance Emittable Function where
     emit (Func _ name _ stmts) = let asmname = unpack name in
-                                 [ Global asmname
-                                 , Type asmname TyFunction
-                                 , Label asmname
+                                 [ Label asmname
                                  ] ++ (concatMap emit stmts)
 
 instance Emittable TranslationUnit where
-    emit (TranslationUnit file funcs) = SFile file : SText : concatMap emit funcs
+    emit (TranslationUnit file funcs) = [ SFile file
+                                        , SText ] ++ concatMap emitGlobals funcs
+                                         ++ concatMap emit funcs
+
+emitGlobals (Func _ name _ _) = let asmname = unpack name in
+                                [ Global asmname
+                                , Type asmname TyFunction
+                                ]
 
 emitLiteral (IntLit x) = OpValue x
 
@@ -53,6 +58,7 @@ instance Show ObjType where
     show TyFunction = "@function"
 
 data Asm = Movl Operand Operand
+         | Pushq Operand
          | Global String
          | Type String ObjType
          | Label String

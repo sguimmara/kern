@@ -122,7 +122,7 @@ data Function = Func Type Text ParamList FuncBody
                 deriving (Show, Eq)
 
 function :: GenParser st Function
-function = Func <$> ctype <*> identifier <*> paramlist <*> body
+function = spaces >> Func <$> ctype <*> identifier <*> paramlist <*> body
 
 
 data TranslationUnit = TranslationUnit String [Function]
