@@ -125,8 +125,8 @@ function :: GenParser st Function
 function = Func <$> ctype <*> identifier <*> paramlist <*> body
 
 
-data TranslationUnit = TranslationUnit [Function]
+data TranslationUnit = TranslationUnit String [Function]
                        deriving (Show, Eq)
 
-translunit :: GenParser st TranslationUnit
-translunit = TranslationUnit <$> many function
+translunit :: String -> GenParser st TranslationUnit
+translunit s = TranslationUnit  s <$> many function

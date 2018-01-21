@@ -30,7 +30,7 @@ instance Emittable Function where
                                  ] ++ (concatMap emit stmts)
 
 instance Emittable TranslationUnit where
-    emit (TranslationUnit funcs) = concatMap emit funcs
+    emit (TranslationUnit file funcs) = SFile file : SText : concatMap emit funcs
 
 emitLiteral (IntLit x) = OpValue x
 
@@ -56,6 +56,8 @@ data Asm = Movl Operand Operand
          | Global String
          | Type String ObjType
          | Label String
+         | SText
+         | SFile String
          | Ret
            deriving (Eq)
 
@@ -67,6 +69,8 @@ instance Show Asm where
     show Ret            = ind ++ "ret"
     show (Global s)     = ind ++ ".globl " ++ s
     show (Label s)      = s ++ ":"
+    show SText          = ind ++ ".text"
+    show (SFile file)   = ind ++ ".file \"" ++ file ++ "\""
     show (Type s ty)    = ind ++ ".type " ++ s ++ ", " ++ (show ty)
 
 toAssembly :: [Asm] -> String
