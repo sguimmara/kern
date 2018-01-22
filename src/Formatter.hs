@@ -17,6 +17,7 @@ format (Label s)           = s ++ ":"
 format (Section s xs)      = fmt [dot s, lst xs]
 -- Instructions---------------------------------------------------------
 format Ret                 = fmt [ "ret" ]
+format (Rep Ret)           = fmt [ "rep ret" ]
 format (Mov sz op1 op2)    = fmt [ sized "mov" sz, lst $ map show [op1, op2] ]
 format (Pop sz op1)        = fmt [ sized "pop" sz, lst $ map show [op1] ]
 format (Push sz op1)       = fmt [ sized "push"sz, lst $ map show [op1] ]

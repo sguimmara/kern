@@ -5,6 +5,15 @@ module CodeGen
     , Operand (..)
     , Asm (..)
     , Size (..)
+    , SymbolTable (..)
+    , SymMap (..)
+    , mkTable
+    , mkParamMap
+    , mkBodyMap
+    , lookupTbl
+    , loc
+    , genStmt
+    , genRet
     ) where
 
 import AST
@@ -12,6 +21,20 @@ import AST
 import Data.Text    (pack, unpack)
 import Data.Char    (toLower)
 import Data.List    (intercalate)
+
+------------------------------------------------------------------------
+--- Registers ----------------------------------------------------------
+------------------------------------------------------------------------
+
+data Register = -- General purpose -------------------------------------
+                Eax | Ebx | Ecx | Edx | Ebp | Esi | Edi | Esp -- 32 bit
+              | Rax | Rbx | Rcx | Rdx | Rbp | Rsi | Rdi | Rsp -- 64 bit
+              | R8  | R9  | R10 | R11 | R12 | R13 | R14 | R15 -- 64 bit
+                deriving (Show, Eq)
+
+data Operand = OpValue Int
+             | OpReg Register
+               deriving (Eq)
 
 ------------------------------------------------------------------------
 --- Constants & utilities ----------------------------------------------
@@ -38,25 +61,95 @@ getId :: Identifier -> String
 getId (Ident i) = unpack i
 
 ------------------------------------------------------------------------
+--- Symbol table -------------------------------------------------------
+------------------------------------------------------------------------
+
+data SymbolTable = SymTable [SymMap]
+                   deriving (Eq)
+
+instance Show SymbolTable where
+  show (SymTable syms) = unlines $ map show syms
+
+data SymMap = SymMap SymType Identifier TypeSpec Location
+              deriving (Eq)
+
+loc :: SymMap -> Location
+loc (SymMap _ _ _ l) = l
+
+instance Show SymMap where
+  show (SymMap symty ident ty loc) =
+    intercalate " | " [ show ident
+                      , show symty
+                      ,  show ty
+                      , show loc ]
+
+type Offset = Int
+
+data SymType = ParamSym | LocalSym
+               deriving (Eq)
+
+instance Show SymType where
+    show ParamSym = "param"
+    show LocalSym = "local"
+
+data Location = LocReg Register
+              | LocStack Offset
+                deriving (Eq)
+
+instance Show Location where
+    show (LocReg r) = map toLower (show r)
+    show (LocStack offs) = show offs
+
+-- Make a symbol table following the SystemV AMD64 ABI
+-- That is :
+-- The 6 first integer parameters are stored in rdi, rsi, rdx, rcx, r8, r9
+mkTable :: Function -> SymbolTable
+mkTable (Func _ _ params body) = SymTable $ mkParamMap params ++ mkBodyMap body
+
+-- create maps from the given function parameters
+mkParamMap :: ParamList -> [SymMap]
+mkParamMap lst = f lst 0
+    where f [Param (Var ty ident)] i    = [SymMap ParamSym ident ty (getLoc ty i)]
+          f (Param (Var ty ident):xs) i = (SymMap ParamSym ident ty (getLoc ty i) : f xs (i+1))
+
+getLoc :: TypeSpec -> Int -> Location
+getLoc IntS i = case i of
+                  0 -> LocReg Rdi
+                  1 -> LocReg Rsi
+                  2 -> LocReg Rdx
+                  3 -> LocReg Rcx
+                  4 -> LocReg R8
+                  5 -> LocReg R9
+
+lookupTbl :: SymbolTable -> Identifier -> SymMap
+lookupTbl (SymTable syms) i = lk syms i
+  where lk ( r@(SymMap _ x _ _ ) : xs) ii = if ii == x then r else lk xs ii
+
+mkBodyMap :: FuncBody -> [SymMap]
+mkBodyMap body = [] -- TODO : collect local variables
+
+------------------------------------------------------------------------
 --- Emitters -----------------------------------------------------------
 ------------------------------------------------------------------------
 
 data Asm =
-         -- Misc ---------------------------------------------------
+         -- Misc -------------------------------------------------------
            Label String
          | Section String [String]
          -- Instructions------------------------------------------------
          | Ret
+         | Rep Asm
          | Mov Size Operand Operand
          | Pop Size Operand
          | Push Size Operand
-           deriving (Eq)
+           deriving (Eq, Show)
 
 class Emittable a where
     emit :: a -> [Asm]
 
-
 instance Emittable Return where
+    emit ReturnVoid      = [ popq rbp
+                           , Rep Ret ] -- see http://repzret.org/p/repzret/
     emit (ReturnLit lit) = [ movl (emitLiteral lit) eax
                            , popq rbp
                            , Ret
@@ -76,22 +169,25 @@ fprolog (Func _ name _ _) = let n = getId name in
                             ]
 
 fbody :: Function -> [Asm]
-fbody (Func _ _ _ stmts) = [ pushq rbp
-                           , movq rsp rbp
-                           ] ++ concatMap emit stmts
+fbody f@(Func _ _ _ stmts) = [ pushq rbp
+                             , movq rsp rbp
+                             ] ++ concatMap emit stmts
+
+
+
+genStmt :: SymbolTable -> Statement -> [Asm]
+genStmt st (ReturnStmt ret) = genRet st ret
+
+genRet :: SymbolTable -> Return -> [Asm]
+genRet _ ReturnVoid = [ Rep Ret ]
+
+
 
 instance Emittable TranslationUnit where
     emit (TranslationUnit file funcs) = [ s_file file
                                         , s_text ] ++ concatMap emit funcs
 
 emitLiteral (IntLit x) = OpValue x
-
-data Register = Eax | Rbp | Rsp
-                deriving (Show, Eq)
-
-data Operand = OpValue Int
-             | OpReg Register
-               deriving (Eq)
 
 instance Show Operand where
     show (OpValue x) = "$" ++ show x
