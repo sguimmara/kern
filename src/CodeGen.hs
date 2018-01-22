@@ -1,10 +1,10 @@
 module CodeGen
     ( emit
-    , toAssembly
     , Emittable
     , Register (..)
     , Operand (..)
     , Asm (..)
+    , Size (..)
     ) where
 
 import AST
@@ -13,22 +13,49 @@ import Data.Text    (pack, unpack)
 import Data.Char    (toLower)
 import Data.List    (intercalate)
 
-
 ------------------------------------------------------------------------
---- Constants ----------------------------------------------------------
+--- Constants & utilities ----------------------------------------------
 ------------------------------------------------------------------------
 
 eax = OpReg Eax
 rbp = OpReg Rbp
 rsp = OpReg Rsp
 
+popq = Pop Q
+pushq = Push Q
+popl = Pop L
+pushl = Push L
+
+movq = Mov Q
+movl = Mov L
+
+s_text      = Section "text" []
+s_global n  = Section "globl" [n]
+s_file n    = Section "file" [n]
+s_type n t  = Section "type" [n, show t]
+
+------------------------------------------------------------------------
+--- Emitters -----------------------------------------------------------
+------------------------------------------------------------------------
+
+data Asm =
+         -- Misc ---------------------------------------------------
+           Label String
+         | Section String [String]
+         -- Instructions------------------------------------------------
+         | Ret
+         | Mov Size Operand Operand
+         | Pop Size Operand
+         | Push Size Operand
+           deriving (Eq)
+
 class Emittable a where
     emit :: a -> [Asm]
 
 
 instance Emittable Return where
-    emit (ReturnLit lit) = [ Mov L (emitLiteral lit) eax
-                           , Pop Q rbp
+    emit (ReturnLit lit) = [ movl (emitLiteral lit) eax
+                           , popq rbp
                            , Ret
                            ]
 
@@ -39,20 +66,20 @@ instance Emittable Function where
     emit fun = fprolog fun ++ fbody fun
 
 fprolog :: Function -> [Asm]
-fprolog (Func _ name _ _) = let asmname = unpack name in
-                            [ Global asmname
-                            , Type asmname TyFunction
-                            , Label asmname
+fprolog (Func _ name _ _) = let n = unpack name in
+                            [ s_global n
+                            , s_type n TyFunction
+                            , Label n
                             ]
 
 fbody :: Function -> [Asm]
-fbody (Func _ _ _ stmts) = [ Push Q rbp
-                           , Mov Q rsp rbp
+fbody (Func _ _ _ stmts) = [ pushq rbp
+                           , movq rsp rbp
                            ] ++ concatMap emit stmts
 
 instance Emittable TranslationUnit where
-    emit (TranslationUnit file funcs) = [ SFile file
-                                        , SText ] ++ concatMap emit funcs
+    emit (TranslationUnit file funcs) = [ s_file file
+                                        , s_text ] ++ concatMap emit funcs
 
 emitLiteral (IntLit x) = OpValue x
 
@@ -79,48 +106,3 @@ data Size = L | Q
 instance Show Size where
     show L = "l"
     show Q = "q"
-
-data Asm = Label String
-         -- Sections ---------------------------------------------------
-         | SText
-         | SFile String
-         | Global String
-         | Type String ObjType
-         -- Instructions------------------------------------------------
-         | Ret
-         | Mov Size Operand Operand
-         | Pop Size Operand
-         | Push Size Operand
-           deriving (Eq)
-
-ind = "\t"
-
-tab = "\t"
-fmt []     = ""
-fmt [x] = tab ++ x
-fmt (x:xs) = tab ++ x ++ fmt xs
-
-lst :: [String] -> String
-lst = intercalate ", "
-
-sized :: String -> Size -> String
-sized x s = x ++ show s
-
-sh x = show x
-
-instance Show Asm where
-    -- Misc ------------------------------------------------------------
-    show (Label s)          = s ++ ":"
-    -- Sections --------------------------------------------------------
-    show SText              = fmt [ ".text" ]
-    show (SFile file)       = fmt [ ".file", file ]
-    show (Type s ty)        = fmt [ ".type", lst [s, sh ty] ]
-    show (Global s)         = fmt [ ".globl", s ]
-    -- Instructions-----------------------------------------------------
-    show Ret                = fmt [ "ret" ]
-    show (Mov s op1 op2)    = fmt [ sized "mov" s, lst [sh op1, sh op2] ]
-    show (Pop s op)         = fmt [ sized "pop" s, sh op ]
-    show (Push s op)        = fmt [ sized "push" s, sh op ]
-
-toAssembly :: [Asm] -> String
-toAssembly = unlines . (map show)
