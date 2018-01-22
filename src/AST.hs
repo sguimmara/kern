@@ -11,9 +11,9 @@ module AST
     , statement
     , Return (..)
     , returnstmt
-    , TypeSpec
+    , TypeSpec (..)
     , typespec
-    , Parameter
+    , Parameter (..)
     , parameter
     , ParamList
     , paramlist
@@ -37,7 +37,12 @@ import Text.Parsec.Text
 data TypeSpec = IntS            -- ^ int
               | VoidS           -- ^ void
               | FloatS          -- ^ void
-                deriving (Show, Eq)
+                deriving (Eq)
+
+instance Show TypeSpec where
+    show IntS   = "int32"
+    show VoidS  = "void"
+    show FloatS = "float32"
 
 -- Variables, literals and unary operators -----------------------------
 data Variable = Var TypeSpec Identifier
@@ -47,7 +52,10 @@ data Literal = IntLit Int
                deriving (Show, Eq)
 
 newtype Identifier = Ident Text
-                     deriving (Show, Eq)
+                     deriving (Eq)
+
+instance Show Identifier where
+    show (Ident i) = unpack i
 
 
 -- Statements ----------------------------------------------------------
@@ -56,6 +64,7 @@ data Statement = ReturnStmt Return
 
 data Return = ReturnVar Identifier
             | ReturnLit Literal
+            | ReturnVoid
               deriving (Show, Eq)
 
 
@@ -137,7 +146,7 @@ returnstmt :: GenParser st Return
 returnstmt = do
     _ <- string "return"
     spaces
-    ReturnVar <$> identifier <|> ReturnLit <$> literal
+    ReturnVar <$> identifier <|> ReturnLit <$> literal <|> return ReturnVoid
 
 
 -- Functions -----------------------------------------------------------
