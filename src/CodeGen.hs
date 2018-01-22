@@ -34,6 +34,9 @@ s_global n  = Section "globl" [n]
 s_file n    = Section "file" [n]
 s_type n t  = Section "type" [n, show t]
 
+getId :: Identifier -> String
+getId (Ident i) = unpack i
+
 ------------------------------------------------------------------------
 --- Emitters -----------------------------------------------------------
 ------------------------------------------------------------------------
@@ -66,7 +69,7 @@ instance Emittable Function where
     emit fun = fprolog fun ++ fbody fun
 
 fprolog :: Function -> [Asm]
-fprolog (Func _ name _ _) = let n = unpack name in
+fprolog (Func _ name _ _) = let n = getId name in
                             [ s_global n
                             , s_type n TyFunction
                             , Label n
