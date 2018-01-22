@@ -1,38 +1,40 @@
-module Formatter
-    ( format
-    , prettyPrint
-    ) where
+module Formatter where
 
-import CodeGen
+-- module Formatter
+--     ( format
+--     , prettyPrint
+--     ) where
 
-import Data.List       (intercalate)
-import Data.Text       (Text, pack)
+-- import CodeGen
 
-prettyPrint :: [Asm] -> Text
-prettyPrint = pack . unlines . map format
+-- import Data.List       (intercalate)
+-- import Data.Text       (Text, pack)
 
-format :: Asm -> String
--- Misc ----------------------------------------------------------------
-format (Label s)           = s ++ ":"
-format (Section s xs)      = fmt [dot s, lst xs]
--- Instructions---------------------------------------------------------
-format Ret                 = fmt [ "ret" ]
-format (Rep Ret)           = fmt [ "rep ret" ]
-format (Mov sz op1 op2)    = fmt [ sized "mov" sz, lst $ map show [op1, op2] ]
-format (Pop sz op1)        = fmt [ sized "pop" sz, lst $ map show [op1] ]
-format (Push sz op1)       = fmt [ sized "push"sz, lst $ map show [op1] ]
+-- prettyPrint :: [Asm] -> Text
+-- prettyPrint = pack . unlines . map format
 
-sized :: String -> Size -> String
-sized op size = op ++ show size
+-- format :: Asm -> String
+-- -- Misc ----------------------------------------------------------------
+-- format (Label s)           = s ++ ":"
+-- format (Section s xs)      = fmt [dot s, lst xs]
+-- -- Instructions---------------------------------------------------------
+-- format Ret                 = fmt [ "ret" ]
+-- format (Rep Ret)           = fmt [ "rep ret" ]
+-- format (Mov sz op1 op2)    = fmt [ sized "mov" sz, lst $ map show [op1, op2] ]
+-- format (Pop sz op1)        = fmt [ sized "pop" sz, lst $ map show [op1] ]
+-- format (Push sz op1)       = fmt [ sized "push"sz, lst $ map show [op1] ]
 
-dot :: String -> String
-dot s = "." ++ s
+-- sized :: String -> Size -> String
+-- sized op size = op ++ show size
 
-tab = "\t"
+-- dot :: String -> String
+-- dot s = "." ++ s
 
-fmt []     = ""
-fmt [x] = tab ++ x
-fmt (x:xs) = tab ++ x ++ fmt xs
+-- tab = "\t"
 
-lst :: [String] -> String
-lst = intercalate ", "
+-- fmt []     = ""
+-- fmt [x] = tab ++ x
+-- fmt (x:xs) = tab ++ x ++ fmt xs
+
+-- lst :: [String] -> String
+-- lst = intercalate ", "

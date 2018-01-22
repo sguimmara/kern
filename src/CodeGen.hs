@@ -1,238 +1,240 @@
-module CodeGen
-    ( genAssembly
-    , Register (..)
-    , Operand (..), fit
-    , Asm (..)
-    , Size (..)
-    , SymbolTable (..)
-    , SymMap (..)
-    , mkTable
-    , mkParamMap
-    , mkBodyMap
-    , lookupTbl
-    , genFunc
-    , genStmt
-    , genRet
-    ) where
+module CodeGen where
 
-import AST
+-- module CodeGen
+--     ( genAssembly
+--     , Register (..)
+--     , Operand (..), fit
+--     , Asm (..)
+--     , Size (..)
+--     , SymbolTable (..)
+--     , SymMap (..)
+--     , mkTable
+--     , mkParamMap
+--     , mkBodyMap
+--     , lookupTbl
+--     , genFunc
+--     , genStmt
+--     , genRet
+--     ) where
 
-import Data.Text    (pack, unpack)
-import Data.Char    (toLower)
-import Data.List    (intercalate, find)
+-- import AST
 
-------------------------------------------------------------------------
---- Registers ----------------------------------------------------------
-------------------------------------------------------------------------
+-- import Data.Text    (pack, unpack)
+-- import Data.Char    (toLower)
+-- import Data.List    (intercalate, find)
 
-data Register = -- General purpose -------------------------------------
-                Eax | Ebx | Ecx | Edx | Ebp | Esi | Edi | Esp -- 32 bit
-              | Rax | Rbx | Rcx | Rdx | Rbp | Rsi | Rdi | Rsp -- 64 bit
-              | R8  | R9  | R10 | R11 | R12 | R13 | R14 | R15 -- 64 bit
-                deriving (Show, Eq)
+-- ------------------------------------------------------------------------
+-- --- Registers ----------------------------------------------------------
+-- ------------------------------------------------------------------------
 
-data Operand = OpValue Int
-             | OpReg Register
-               deriving (Eq)
+-- data Register = -- General purpose -------------------------------------
+--                 Eax | Ebx | Ecx | Edx | Ebp | Esi | Edi | Esp -- 32 bit
+--               | Rax | Rbx | Rcx | Rdx | Rbp | Rsi | Rdi | Rsp -- 64 bit
+--               | R8  | R9  | R10 | R11 | R12 | R13 | R14 | R15 -- 64 bit
+--                 deriving (Show, Eq)
 
-------------------------------------------------------------------------
---- Constants & utilities ----------------------------------------------
-------------------------------------------------------------------------
+-- data Operand = OpValue Int
+--              | OpReg Register
+--                deriving (Eq)
 
-eax = OpReg Eax
-rbp = OpReg Rbp
-rsp = OpReg Rsp
+-- ------------------------------------------------------------------------
+-- --- Constants & utilities ----------------------------------------------
+-- ------------------------------------------------------------------------
 
-popq = Pop Q
-pushq = Push Q
-popl = Pop L
-pushl = Push L
+-- eax = OpReg Eax
+-- rbp = OpReg Rbp
+-- rsp = OpReg Rsp
 
-ret = Ret
+-- popq = Pop Q
+-- pushq = Push Q
+-- popl = Pop L
+-- pushl = Push L
 
-movq = Mov Q
-movl = Mov L
+-- ret = Ret
 
-s_text      = Section "text" []
-s_global n  = Section "globl" [n]
-s_file n    = Section "file" [n]
-s_type n t  = Section "type" [n, show t]
+-- movq = Mov Q
+-- movl = Mov L
 
-getId :: Identifier -> String
-getId (Ident i) = unpack i
+-- s_text      = Section "text" []
+-- s_global n  = Section "globl" [n]
+-- s_file n    = Section "file" [n]
+-- s_type n t  = Section "type" [n, show t]
 
-------------------------------------------------------------------------
---- Symbol table -------------------------------------------------------
-------------------------------------------------------------------------
+-- getId :: Identifier -> String
+-- getId (Ident i) = unpack i
 
-data SymbolTable = SymTable [SymMap]
-                   deriving (Eq)
+-- ------------------------------------------------------------------------
+-- --- Symbol table -------------------------------------------------------
+-- ------------------------------------------------------------------------
 
-instance Show SymbolTable where
-  show (SymTable syms) = unlines $ map show syms
+-- data SymbolTable = SymTable [SymMap]
+--                    deriving (Eq)
 
-data SymMap = SymMap SymType Identifier TypeSpec Location
-              deriving (Eq)
+-- instance Show SymbolTable where
+--   show (SymTable syms) = unlines $ map show syms
 
-instance Show SymMap where
-  show (SymMap symty ident ty loc) =
-    intercalate " | " [ show ident
-                      , show symty
-                      ,  show ty
-                      , show loc ]
+-- data SymMap = SymMap SymType Identifier TypeSpec Location
+--               deriving (Eq)
 
-type Offset = Int
+-- instance Show SymMap where
+--   show (SymMap symty ident ty loc) =
+--     intercalate " | " [ show ident
+--                       , show symty
+--                       ,  show ty
+--                       , show loc ]
 
-data SymType = ParamSym | LocalSym
-               deriving (Eq)
+-- type Offset = Int
 
-instance Show SymType where
-    show ParamSym = "param"
-    show LocalSym = "local"
+-- data SymType = ParamSym | LocalSym
+--                deriving (Eq)
 
-data Location = LocReg Register
-              | LocStack Offset
-                deriving (Eq)
+-- instance Show SymType where
+--     show ParamSym = "param"
+--     show LocalSym = "local"
 
-instance Show Location where
-    show (LocReg r) = map toLower (show r)
-    show (LocStack offs) = show offs
+-- data Location = LocReg Register
+--               | LocStack Offset
+--                 deriving (Eq)
 
--- Make a symbol table following the SystemV AMD64 ABI
--- That is :
--- The 6 first integer parameters are stored in rdi, rsi, rdx, rcx, r8, r9
-mkTable :: Function -> SymbolTable
-mkTable (Func _ _ params body) = SymTable $ mkParamMap params ++ mkBodyMap body
+-- instance Show Location where
+--     show (LocReg r) = map toLower (show r)
+--     show (LocStack offs) = show offs
 
--- create maps from the given function parameters
-mkParamMap :: ParamList -> [SymMap]
-mkParamMap lst = f lst 0
-    where f [Param (Var ty ident)] i    = [SymMap ParamSym ident ty (getLoc ty i)]
-          f (Param (Var ty ident):xs) i = (SymMap ParamSym ident ty (getLoc ty i) : f xs (i+1))
+-- -- Make a symbol table following the SystemV AMD64 ABI
+-- -- That is :
+-- -- The 6 first integer parameters are stored in rdi, rsi, rdx, rcx, r8, r9
+-- mkTable :: Function -> SymbolTable
+-- mkTable (Func _ _ params body) = SymTable $ mkParamMap params ++ mkBodyMap body
 
-getLoc :: TypeSpec -> Int -> Location
-getLoc IntS i = case i of
-                  0 -> LocReg Rdi
-                  1 -> LocReg Rsi
-                  2 -> LocReg Rdx
-                  3 -> LocReg Rcx
-                  4 -> LocReg R8
-                  5 -> LocReg R9
+-- -- create maps from the given function parameters
+-- mkParamMap :: ParamList -> [SymMap]
+-- mkParamMap lst = f lst 0
+--     where f [Param (Var ty ident)] i    = [SymMap ParamSym ident ty (getLoc ty i)]
+--           f (Param (Var ty ident):xs) i = (SymMap ParamSym ident ty (getLoc ty i) : f xs (i+1))
 
-lookupTbl :: SymbolTable -> Identifier -> SymMap
-lookupTbl (SymTable syms) i = lk syms i
-  where lk ( r@(SymMap _ x _ _ ) : xs) ii = if ii == x then r else lk xs ii
+-- getLoc :: TypeSpec -> Int -> Location
+-- getLoc IntS i = case i of
+--                   0 -> LocReg Rdi
+--                   1 -> LocReg Rsi
+--                   2 -> LocReg Rdx
+--                   3 -> LocReg Rcx
+--                   4 -> LocReg R8
+--                   5 -> LocReg R9
 
-mkBodyMap :: FuncBody -> [SymMap]
-mkBodyMap body = [] -- TODO : collect local variables
+-- lookupTbl :: SymbolTable -> Identifier -> SymMap
+-- lookupTbl (SymTable syms) i = lk syms i
+--   where lk ( r@(SymMap _ x _ _ ) : xs) ii = if ii == x then r else lk xs ii
 
-------------------------------------------------------------------------
---- Assembly -----------------------------------------------------------
-------------------------------------------------------------------------
+-- mkBodyMap :: FuncBody -> [SymMap]
+-- mkBodyMap body = [] -- TODO : collect local variables
 
-data Asm =
-         -- Misc -------------------------------------------------------
-           Label String
-         | Section String [String]
-         -- Instructions------------------------------------------------
-         | Ret
-         | Rep Asm
-         | Mov Size Operand Operand
-         | Pop Size Operand
-         | Push Size Operand
-           deriving (Eq, Show)
+-- ------------------------------------------------------------------------
+-- --- Assembly -----------------------------------------------------------
+-- ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
---- Generators ---------------------------------------------------------
-------------------------------------------------------------------------
+-- data Asm =
+--          -- Misc -------------------------------------------------------
+--            Label String
+--          | Section String [String]
+--          -- Instructions------------------------------------------------
+--          | Ret
+--          | Rep Asm
+--          | Mov Size Operand Operand
+--          | Pop Size Operand
+--          | Push Size Operand
+--            deriving (Eq, Show)
 
-genAssembly :: TranslationUnit -> [Asm]
-genAssembly t@(TranslationUnit _ funcs) =
-  concat [ genTrUnitMeta t
-         , concatMap genFunc funcs
-         , genTrUnitMetaPost t ]
+-- ------------------------------------------------------------------------
+-- --- Generators ---------------------------------------------------------
+-- ------------------------------------------------------------------------
 
-genTrUnitMeta :: TranslationUnit -> [Asm]
-genTrUnitMeta (TranslationUnit n _) = [ s_file (show n) ]
+-- genAssembly :: TranslationUnit -> [Asm]
+-- genAssembly t@(TranslationUnit _ funcs) =
+--   concat [ genTrUnitMeta t
+--          , concatMap genFunc funcs
+--          , genTrUnitMetaPost t ]
 
-genTrUnitMetaPost :: TranslationUnit -> [Asm]
-genTrUnitMetaPost t = [ Section "ident" [show "ccomp"] ]
+-- genTrUnitMeta :: TranslationUnit -> [Asm]
+-- genTrUnitMeta (TranslationUnit n _) = [ s_file (show n) ]
 
-genFunc :: Function -> [Asm]
-genFunc f = concat [ meta, prologue, body ]
-  where table    = mkTable f
-        meta     = genFuncMeta f
-        prologue = genPrologue table f
-        body     = genBody table (getBody f)
+-- genTrUnitMetaPost :: TranslationUnit -> [Asm]
+-- genTrUnitMetaPost t = [ Section "ident" [show "ccomp"] ]
 
-genFuncMeta :: Function -> [Asm]
-genFuncMeta (Func _ name _ _) =
-  let n = getId name in
-        [ s_global n
-        , s_type n TyFunction
-        , Label n
-        ]
+-- genFunc :: Function -> [Asm]
+-- genFunc f = concat [ meta, prologue, body ]
+--   where table    = mkTable f
+--         meta     = genFuncMeta f
+--         prologue = genPrologue table f
+--         body     = genBody table (getBody f)
 
-genPrologue :: SymbolTable -> Function -> [Asm]
-genPrologue st f = [ pushq rbp
-                  , movq rsp rbp]
+-- genFuncMeta :: Function -> [Asm]
+-- genFuncMeta (Func _ name _ _) =
+--   let n = getId name in
+--         [ s_global n
+--         , s_type n TyFunction
+--         , Label n
+--         ]
 
-genBody :: SymbolTable -> FuncBody -> [Asm]
-genBody st body = concatMap (genStmt st) body
+-- genPrologue :: SymbolTable -> Function -> [Asm]
+-- genPrologue st f = [ pushq rbp
+--                   , movq rsp rbp]
 
-genStmt :: SymbolTable -> Statement -> [Asm]
-genStmt st (ReturnStmt ret) = genRet st ret
+-- genBody :: SymbolTable -> FuncBody -> [Asm]
+-- genBody st body = concatMap (genStmt st) body
 
-genRet :: SymbolTable -> Return -> [Asm]
-genRet _ ReturnVoid       = [ Rep ret ]
-genRet _ (ReturnLit lit)  = [ movq rbp rsp
-                            , movl (genLit lit) eax
-                            , popq rbp
-                            , ret ]
-genRet st (ReturnVar var) = [ movq rbp rsp
-                            , movl pos eax
-                            , popq rbp
-                            , ret ]
-  where (SymMap _ _ ty loc) = lookupTbl st var
-        size   = getTypeSize ty
-        pos    = case loc of
-                   LocReg reg -> OpReg $ fit reg size
+-- genStmt :: SymbolTable -> Statement -> [Asm]
+-- genStmt st (ReturnStmt ret) = genRet st ret
 
-registerSizes =
-  [ (Rax, Eax)
-  , (Rbx, Ebx)
-  , (Rcx, Ecx)
-  , (Rdx, Edx)
-  , (Rbp, Ebp)
-  , (Rsi, Esi)
-  , (Rdi, Edi)
-  , (Rsp, Esp)
-  ]
+-- genRet :: SymbolTable -> Return -> [Asm]
+-- genRet _ ReturnVoid       = [ Rep ret ]
+-- genRet _ (ReturnLit lit)  = [ movq rbp rsp
+--                             , movl (genLit lit) eax
+--                             , popq rbp
+--                             , ret ]
+-- genRet st (ReturnVar var) = [ movq rbp rsp
+--                             , movl pos eax
+--                             , popq rbp
+--                             , ret ]
+--   where (SymMap _ _ ty loc) = lookupTbl st var
+--         size   = getTypeSize ty
+--         pos    = case loc of
+--                    LocReg reg -> OpReg $ fit reg size
 
--- Select the register that fits with the size
--- e.g : if the size is 4 bytes and the register is RDI, return EDI
-fit :: Register -> TypeSize -> Register
-fit r s = let m = find (\x -> fst x == r) registerSizes in
-               case m of
-                 Just (r64, r32) -> if s == Size32 then r32 else r64
-                 Nothing         -> r
+-- registerSizes =
+--   [ (Rax, Eax)
+--   , (Rbx, Ebx)
+--   , (Rcx, Ecx)
+--   , (Rdx, Edx)
+--   , (Rbp, Ebp)
+--   , (Rsi, Esi)
+--   , (Rdi, Edi)
+--   , (Rsp, Esp)
+--   ]
 
-genLit :: Literal -> Operand
-genLit (IntLit x) = OpValue x
+-- -- Select the register that fits with the size
+-- -- e.g : if the size is 4 bytes and the register is RDI, return EDI
+-- fit :: Register -> TypeSize -> Register
+-- fit r s = let m = find (\x -> fst x == r) registerSizes in
+--                case m of
+--                  Just (r64, r32) -> if s == Size32 then r32 else r64
+--                  Nothing         -> r
 
-instance Show Operand where
-    show (OpValue x) = "$" ++ show x
-    show (OpReg reg) = "%" ++ (map toLower (show reg))
+-- genLit :: Literal -> Operand
+-- genLit (IntLit x) = OpValue x
 
-data ObjType = TyFunction
-               deriving (Eq)
+-- instance Show Operand where
+--     show (OpValue x) = "$" ++ show x
+--     show (OpReg reg) = "%" ++ (map toLower (show reg))
 
-instance Show ObjType where
-    show TyFunction = "@function"
+-- data ObjType = TyFunction
+--                deriving (Eq)
 
-data Size = L | Q
-            deriving (Eq)
+-- instance Show ObjType where
+--     show TyFunction = "@function"
 
-instance Show Size where
-    show L = "l"
-    show Q = "q"
+-- data Size = L | Q
+--             deriving (Eq)
+
+-- instance Show Size where
+--     show L = "l"
+--     show Q = "q"

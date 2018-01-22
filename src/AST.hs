@@ -1,18 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module AST
-    ( Variable (..), variable
+    ( digits, int
     , Identifier (..), identifier
-    , Literal (..), literal
-    , Statement (..), statement
-    , Return (..), returnstmt
+    , FuncDef (..), funcdef
+    , Declarator (..), declarator
+    , ParamList (..), paramlist
+    , ParamDecl (..), paramdecl
+    , DeclSpec (..), declspec
     , TypeSpec (..), typespec
-    , TypeSize (..), getTypeSize
-    , Parameter (..), parameter
-    , ParamList, paramlist
-    , Function (..), function
-    , FuncBody, body, getBody
-    , TranslationUnit (..), translunit
+    , PrimExpr (..), primexpr
+    , Constant (..), constant
+    , Statement (..), statement
+    , CompoundStmt(..), compoundstmt
+    , Jump (..), jump
     ) where
 
 import Data.Text        (Text, unpack, pack)
@@ -20,79 +21,8 @@ import Text.Parsec
 import Text.Parsec.Text
 
 ------------------------------------------------------------------------
--- AST definitions -----------------------------------------------------
-------------------------------------------------------------------------
-
--- Type specifiers -----------------------------------------------------
-data TypeSpec = IntS            -- ^ int
-              | VoidS           -- ^ void
-              | FloatS          -- ^ void
-                deriving (Eq)
-
-data TypeSize = Size32 | Size64
-                deriving (Eq, Show)
-
-getTypeSize :: TypeSpec -> TypeSize
-getTypeSize x = case x of
-                  IntS   -> Size32
-                  FloatS -> Size32
-                  VoidS  -> error "cannot compute size of void"
-
-instance Show TypeSpec where
-    show IntS   = "int32"
-    show VoidS  = "void"
-    show FloatS = "float32"
-
--- Variables, literals and unary operators -----------------------------
-data Variable = Var TypeSpec Identifier
-                deriving (Show, Eq)
-
-data Literal = IntLit Int
-               deriving (Show, Eq)
-
-newtype Identifier = Ident Text
-                     deriving (Eq)
-
-instance Show Identifier where
-    show (Ident i) = unpack i
-
-
--- Statements ----------------------------------------------------------
-data Statement = ReturnStmt Return
-                 deriving (Show, Eq)
-
-data Return = ReturnVar Identifier
-            | ReturnLit Literal
-            | ReturnVoid
-              deriving (Show, Eq)
-
-
--- Functions -----------------------------------------------------------
-data Function = Func TypeSpec Identifier ParamList FuncBody
-                deriving (Show, Eq)
-
-getBody (Func _ _ _ b) = b
-
-type FuncBody = [Statement]
-
-type ParamList = [Parameter]
-
-newtype Parameter = Param Variable
-                    deriving (Show, Eq)
-
-
--- Translation unit ----------------------------------------------------
-data TranslationUnit = TranslationUnit
-                         String         -- ^ The filename
-                         [Function]     -- ^ The functions
-                       deriving (Show, Eq)
-
-
-------------------------------------------------------------------------
--- Parsing functions----------------------------------------------------
-------------------------------------------------------------------------
-
 -- Utilities -----------------------------------------------------------
+------------------------------------------------------------------------
 digits :: String
 digits = ['0' .. '9']
 
@@ -100,6 +30,7 @@ int :: GenParser st Int
 int = do
     x <- many1 digit
     return $ (read x :: Int)
+
 lowercaseLetters :: String
 lowercaseLetters = ['a' .. 'z']
 
@@ -109,63 +40,124 @@ uppercaseLetters = ['A' .. 'Z']
 letters :: String
 letters = lowercaseLetters ++ uppercaseLetters
 
+------------------------------------------------------------------------
+-- Grammar -------------------------------------------------------------
+------------------------------------------------------------------------
+
+-- Function ------------------------------------------------------------
+data FuncDef = FuncDef DeclSpec Declarator ParamList CompoundStmt
+               deriving (Eq, Show)
+
+funcdef :: GenParser st FuncDef
+funcdef = FuncDef <$> declspec <*> declarator <*> paramlist <*> compoundstmt
+
+-- Declarator ----------------------------------------------------------
+data Declarator = Decl DirectDecl
+                  deriving (Eq, Show)
+
+declarator :: GenParser st Declarator
+declarator = Decl <$> directdecl
+
+data DirectDecl = DeclIdent Identifier
+                | DirectDeclP DirectDecl ParamList
+                  deriving (Eq, Show)
+
+directdecl :: GenParser st DirectDecl
+directdecl = spaces >> choice [ DeclIdent <$> identifier ]
+
+
+data ParamList = ParamList [ParamDecl]
+                 deriving (Eq, Show)
+
+comma = spaces >> char ',' >> spaces
+
+paramlist :: GenParser st ParamList
+paramlist = do
+  spaces >> char '(' >> spaces
+  p <- ParamList <$> (paramdecl `sepBy` comma)
+  spaces >> char ')' >> spaces
+  return p
+
+
+data ParamDecl = ParamDecl DeclSpec Declarator
+                 deriving (Eq, Show)
+
+paramdecl :: GenParser st ParamDecl
+paramdecl = choice [ ParamDecl <$> declspec <*> declarator ]
+
+
+data DeclSpec = DeclTypeSpec TypeSpec
+                deriving (Eq, Show)
+
+declspec :: GenParser st DeclSpec
+declspec = choice [ DeclTypeSpec <$> typespec ]
+
+
+data TypeSpec = TVoid
+              | TInt
+                deriving (Eq, Show)
+
+typespec :: GenParser st TypeSpec
+typespec = choice [ string "void" >> return TVoid
+                  , string "int" >> return TInt ]
+
+-- Identifiers ---------------------------------------------------------
+newtype Identifier = Identifier Text
+                     deriving (Eq, Show)
+
 identifier :: GenParser st Identifier
 identifier = do
     spaces
     let initChars = '_' : letters
     x <- oneOf initChars
     xs <- many $ oneOf (digits ++ initChars)
-    return $ Ident (pack (x : xs))
+    return $ Identifier (pack (x : xs))
 
+-- Expressions ---------------------------------------------------------
+data PrimExpr = ConstExpr Constant
+                deriving (Eq, Show)
 
--- Type specifiers -----------------------------------------------------
-typespec :: GenParser st TypeSpec
-typespec = do
-    let xs = map string ["int", "void", "float"]
-    spec <- choice xs
-    case spec of
-        "void"  -> return VoidS
-        "int"   -> return IntS
-        "float" -> return FloatS
+primexpr :: GenParser st PrimExpr
+primexpr = choice [ ConstExpr <$> constant ]
 
--- Variables, literals and unary operators -----------------------------
-variable :: GenParser st Variable
-variable = Var <$> typespec <*> identifier
+data Constant = IntConst Int
+              -- | CharConst Char
+              -- | FloatConst Float
+              -- | EnumConst
+                deriving (Eq, Show)
 
-literal :: GenParser st Literal
-literal = IntLit <$> int
-
+constant :: GenParser st Constant
+constant = choice [ IntConst <$> int ]
 
 -- Statements ----------------------------------------------------------
+data Statement = JumpStmt Jump
+               | Compound CompoundStmt
+                 deriving (Eq, Show)
+
 statement :: GenParser st Statement
-statement = do
-    stmt <- ReturnStmt <$> returnstmt
-    spaces
-    _ <- char ';'
-    return stmt
-
-returnstmt :: GenParser st Return
-returnstmt = do
-    _ <- string "return"
-    spaces
-    ReturnVar <$> identifier <|> ReturnLit <$> literal <|> return ReturnVoid
+statement = choice [ JumpStmt <$> jump ]
 
 
--- Functions -----------------------------------------------------------
-parameter :: GenParser st Parameter
-parameter = Param <$> variable
+data CompoundStmt = CompoundStmt [Statement]
+                    deriving (Eq, Show)
 
-paramlist :: GenParser st ParamList
-paramlist = between (spaces >> char '(') (spaces >> char ')') params
-    where params = sepBy parameter (spaces >> char ',' >> spaces)
+compoundstmt :: GenParser st CompoundStmt
+compoundstmt = between (spaces >> char '{' >> spaces)
+                       (spaces >> char '}' >> spaces)
+                       (CompoundStmt <$> many statement)
 
-body :: GenParser st FuncBody
-body = between (spaces >> char '{') (spaces >> char '}') (spaces >> many1 statement)
+data Jump = Goto Identifier
+          | Continue
+          | Break
+          | Return (Maybe PrimExpr)
+            deriving (Eq, Show)
 
-function :: GenParser st Function
-function = spaces >> Func <$> typespec <*> identifier <*> paramlist <*> body
-
-
--- Translation unit ----------------------------------------------------
-translunit :: String -> GenParser st TranslationUnit
-translunit s = TranslationUnit  s <$> many function
+jump :: GenParser st Jump
+jump = do
+  jmp <- choice [ string "goto" >> spaces >> Goto <$> identifier
+                , string "continue" >> return Continue
+                , string "break" >> return Break
+                , string "return" >> spaces >> Return <$> (optionMaybe primexpr)
+                ]
+  spaces >> char ';' >> spaces
+  return jmp
