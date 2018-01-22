@@ -3,6 +3,8 @@
 module Parser
     ( digits, int
     , Identifier (..), identifier
+    , TranslationUnit (..), translationunit
+    , ExternalDecl (..), externaldecl
     , FuncDef (..), funcdef
     , Declarator (..), declarator
     , ParamList (..), paramlist
@@ -43,6 +45,20 @@ letters = lowercaseLetters ++ uppercaseLetters
 ------------------------------------------------------------------------
 -- Grammar -------------------------------------------------------------
 ------------------------------------------------------------------------
+
+-- TranslationUnit -----------------------------------------------------
+data TranslationUnit = TranslationUnit  [ExternalDecl]
+                       deriving (Eq, Show)
+
+translationunit :: GenParser st TranslationUnit
+translationunit = TranslationUnit <$> many externaldecl
+
+
+data ExternalDecl = ExtDeclFuncDef FuncDef
+                    deriving (Eq, Show)
+
+externaldecl :: GenParser st ExternalDecl
+externaldecl = choice [ ExtDeclFuncDef <$> funcdef ]
 
 -- Function ------------------------------------------------------------
 data FuncDef = FuncDef DeclSpec Declarator ParamList CompoundStmt
