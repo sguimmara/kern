@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AST
+module Parser
     ( digits, int
     , Identifier (..), identifier
     , FuncDef (..), funcdef
