@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Parser
-    ( digits, int
+    ( parse
+    , digits, int
     , Identifier (..), identifier
     , TranslationUnit (..), translationunit
     , ExternalDecl (..), externaldecl
@@ -18,9 +19,19 @@ module Parser
     , Jump (..), jump
     ) where
 
-import Data.Text        (Text, unpack, pack)
-import Text.Parsec
-import Text.Parsec.Text
+import           Data.Text           (Text, unpack, pack)
+import           Text.Parsec         ( spaces, digit
+                                     , optionMaybe
+                                     , string, char
+                                     , sepBy, between
+                                     , oneOf, many, many1
+                                     , choice)
+import qualified Text.Parsec as P
+import           Text.Parsec.Text    (GenParser)
+import           Text.Parsec.Error   (ParseError)
+
+parse :: Text -> FilePath -> Either ParseError TranslationUnit
+parse txt path = P.parse translationunit "" txt
 
 ------------------------------------------------------------------------
 -- Utilities -----------------------------------------------------------
@@ -58,7 +69,7 @@ data ExternalDecl = ExtDeclFuncDef FuncDef
                     deriving (Eq, Show)
 
 externaldecl :: GenParser st ExternalDecl
-externaldecl = choice [ ExtDeclFuncDef <$> funcdef ]
+externaldecl = spaces >> choice [ ExtDeclFuncDef <$> funcdef ]
 
 -- Function ------------------------------------------------------------
 data FuncDef = FuncDef DeclSpec Declarator ParamList CompoundStmt
