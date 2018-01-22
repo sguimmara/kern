@@ -59,23 +59,72 @@ identifier = do
 -- AST definitions -----------------------------------------------------
 ------------------------------------------------------------------------
 
+-- Type specifiers -----------------------------------------------------
+data Type = TyInt
+          | TyVoid
+            deriving (Show, Eq)
+
+
+-- Variables, literals and unary operators -----------------------------
 newtype Variable = Var Text
                    deriving (Show, Eq)
 
-variable :: GenParser st Variable
-variable = Var <$> identifier
-
-
 data Literal = IntLit Int
                deriving (Show, Eq)
+
+
+-- Statements ----------------------------------------------------------
+data Statement = ReturnStmt Return
+                 deriving (Show, Eq)
+
+data Return = ReturnVar Variable
+            | ReturnLit Literal
+              deriving (Show, Eq)
+
+
+-- Functions -----------------------------------------------------------
+data Function = Func Type Text ParamList FuncBody
+                deriving (Show, Eq)
+
+type FuncBody = [Statement]
+
+type ParamList = [Parameter]
+
+data Parameter = Param Type Text
+               deriving (Show, Eq)
+
+
+-- Translation unit ----------------------------------------------------
+data TranslationUnit = TranslationUnit
+                         String         -- ^ The filename
+                         [Function]     -- ^ The functions
+                       deriving (Show, Eq)
+
+------------------------------------------------------------------------
+-- Parsing functions----------------------------------------------------
+------------------------------------------------------------------------
+
+-- Type specifiers -----------------------------------------------------
+ctype :: GenParser st Type
+ctype = do
+    (string "int" >> return TyInt) <|> (string "void" >> return TyVoid)
+
+
+-- Variables, literals and unary operators -----------------------------
+variable :: GenParser st Variable
+variable = Var <$> identifier
 
 literal :: GenParser st Literal
 literal = IntLit <$> int
 
 
-data Return = ReturnVar Variable
-            | ReturnLit Literal
-              deriving (Show, Eq)
+-- Statements ----------------------------------------------------------
+statement :: GenParser st Statement
+statement = do
+    stmt <- ReturnStmt <$> returnstmt
+    spaces
+    _ <- char ';'
+    return stmt
 
 returnstmt :: GenParser st Return
 returnstmt = do
@@ -84,49 +133,20 @@ returnstmt = do
     ReturnVar <$> variable <|> ReturnLit <$> literal
 
 
-data Statement = ReturnStmt Return
-                 deriving (Show, Eq)
-
-statement :: GenParser st Statement
-statement = do
-    stmt <- ReturnStmt <$> returnstmt
-    spaces
-    _ <- char ';'
-    return stmt
-
-data Type = TyInt
-          | TyVoid
-            deriving (Show, Eq)
-
-ctype :: GenParser st Type
-ctype = do
-    (string "int" >> return TyInt) <|> (string "void" >> return TyVoid)
-
-type ParamList = [Parameter]
-
-data Parameter = Param Type Text
-                 deriving (Show, Eq)
-
+-- Functions -----------------------------------------------------------
 parameter :: GenParser st Parameter
 parameter = Param <$> ctype <*> identifier
 
 paramlist :: GenParser st ParamList
 paramlist = between (spaces >> char '(') (spaces >> char ')') (many parameter)
 
-type FuncBody = [Statement]
-
 body :: GenParser st FuncBody
 body = between (spaces >> char '{') (spaces >> char '}') (spaces >> many1 statement)
-
-data Function = Func Type Text ParamList FuncBody
-                deriving (Show, Eq)
 
 function :: GenParser st Function
 function = spaces >> Func <$> ctype <*> identifier <*> paramlist <*> body
 
 
-data TranslationUnit = TranslationUnit String [Function]
-                       deriving (Show, Eq)
-
+-- Translation unit ----------------------------------------------------
 translunit :: String -> GenParser st TranslationUnit
 translunit s = TranslationUnit  s <$> many function
