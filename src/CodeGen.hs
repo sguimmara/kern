@@ -147,10 +147,16 @@ data Asm =
 ------------------------------------------------------------------------
 
 genAssembly :: TranslationUnit -> [Asm]
-genAssembly t@(TranslationUnit _ funcs) = genTUMeta t ++ concatMap genFunc funcs
+genAssembly t@(TranslationUnit _ funcs) =
+  concat [ genTrUnitMeta t
+         , concatMap genFunc funcs
+         , genTrUnitMetaPost t ]
 
-genTUMeta :: TranslationUnit -> [Asm]
-genTUMeta (TranslationUnit n _) = [ s_file (show n) ]
+genTrUnitMeta :: TranslationUnit -> [Asm]
+genTrUnitMeta (TranslationUnit n _) = [ s_file (show n) ]
+
+genTrUnitMetaPost :: TranslationUnit -> [Asm]
+genTrUnitMetaPost t = [ Section "ident" [show "ccomp"] ]
 
 genFunc :: Function -> [Asm]
 genFunc f = concat [ meta, prologue, body ]
