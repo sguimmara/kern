@@ -19,8 +19,7 @@ module AST
     , paramlist
     , Function (..)
     , function
-    , FuncBody
-    , body
+    , FuncBody, body, getBody
     , TranslationUnit (..)
     , translunit
     ) where
@@ -71,6 +70,8 @@ data Return = ReturnVar Identifier
 -- Functions -----------------------------------------------------------
 data Function = Func TypeSpec Identifier ParamList FuncBody
                 deriving (Show, Eq)
+
+getBody (Func _ _ _ b) = b
 
 type FuncBody = [Statement]
 

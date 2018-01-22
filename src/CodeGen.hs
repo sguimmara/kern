@@ -1,6 +1,5 @@
 module CodeGen
-    ( emit
-    , Emittable
+    ( genAssembly
     , Register (..)
     , Operand (..)
     , Asm (..)
@@ -12,6 +11,7 @@ module CodeGen
     , mkBodyMap
     , lookupTbl
     , loc
+    , genFunc
     , genStmt
     , genRet
     ) where
@@ -129,7 +129,7 @@ mkBodyMap :: FuncBody -> [SymMap]
 mkBodyMap body = [] -- TODO : collect local variables
 
 ------------------------------------------------------------------------
---- Emitters -----------------------------------------------------------
+--- Assembly -----------------------------------------------------------
 ------------------------------------------------------------------------
 
 data Asm =
@@ -144,50 +144,50 @@ data Asm =
          | Push Size Operand
            deriving (Eq, Show)
 
-class Emittable a where
-    emit :: a -> [Asm]
+------------------------------------------------------------------------
+--- Generators ---------------------------------------------------------
+------------------------------------------------------------------------
 
-instance Emittable Return where
-    emit ReturnVoid      = [ popq rbp
-                           , Rep Ret ] -- see http://repzret.org/p/repzret/
-    emit (ReturnLit lit) = [ movl (emitLiteral lit) eax
-                           , popq rbp
-                           , Ret
-                           ]
+genAssembly :: TranslationUnit -> [Asm]
+genAssembly t@(TranslationUnit _ funcs) = genTUMeta t ++ concatMap genFunc funcs
 
-instance Emittable Statement where
-    emit (ReturnStmt ret) = emit ret
+genTUMeta :: TranslationUnit -> [Asm]
+genTUMeta (TranslationUnit n _) = [ s_file (show n) ]
 
-instance Emittable Function where
-    emit fun = fprolog fun ++ fbody fun
+genFunc :: Function -> [Asm]
+genFunc f = concat [ meta, prologue, body ]
+  where table    = mkTable f
+        meta     = genFuncMeta f
+        prologue = genPrologue table f
+        body     = genBody table (getBody f)
 
-fprolog :: Function -> [Asm]
-fprolog (Func _ name _ _) = let n = getId name in
-                            [ s_global n
-                            , s_type n TyFunction
-                            , Label n
-                            ]
+genFuncMeta :: Function -> [Asm]
+genFuncMeta (Func _ name _ _) =
+  let n = getId name in
+        [ s_global n
+        , s_type n TyFunction
+        , Label n
+        ]
 
-fbody :: Function -> [Asm]
-fbody f@(Func _ _ _ stmts) = [ pushq rbp
-                             , movq rsp rbp
-                             ] ++ concatMap emit stmts
+genPrologue :: SymbolTable -> Function -> [Asm]
+genPrologue st f = [ pushq rbp
+                  , movq rsp rbp]
 
-
+genBody :: SymbolTable -> FuncBody -> [Asm]
+genBody st body = concatMap (genStmt st) body
 
 genStmt :: SymbolTable -> Statement -> [Asm]
 genStmt st (ReturnStmt ret) = genRet st ret
 
 genRet :: SymbolTable -> Return -> [Asm]
-genRet _ ReturnVoid = [ Rep Ret ]
+genRet _ ReturnVoid       = [ Rep Ret ]
+genRet _ (ReturnLit lit)  = [ movq rbp rsp
+                            , movl (genLit lit) eax
+                            , popq rbp
+                            , Ret ]
 
-
-
-instance Emittable TranslationUnit where
-    emit (TranslationUnit file funcs) = [ s_file file
-                                        , s_text ] ++ concatMap emit funcs
-
-emitLiteral (IntLit x) = OpValue x
+genLit :: Literal -> Operand
+genLit (IntLit x) = OpValue x
 
 instance Show Operand where
     show (OpValue x) = "$" ++ show x
