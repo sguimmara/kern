@@ -1,27 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module AST
-    ( Variable (..)
-    , variable
-    , Identifier (..)
-    , identifier
-    , Literal (..)
-    , literal
-    , Statement (..)
-    , statement
-    , Return (..)
-    , returnstmt
-    , TypeSpec (..)
-    , typespec
-    , Parameter (..)
-    , parameter
-    , ParamList
-    , paramlist
-    , Function (..)
-    , function
+    ( Variable (..), variable
+    , Identifier (..), identifier
+    , Literal (..), literal
+    , Statement (..), statement
+    , Return (..), returnstmt
+    , TypeSpec (..), typespec
+    , TypeSize (..), getTypeSize
+    , Parameter (..), parameter
+    , ParamList, paramlist
+    , Function (..), function
     , FuncBody, body, getBody
-    , TranslationUnit (..)
-    , translunit
+    , TranslationUnit (..), translunit
     ) where
 
 import Data.Text        (Text, unpack, pack)
@@ -37,6 +28,15 @@ data TypeSpec = IntS            -- ^ int
               | VoidS           -- ^ void
               | FloatS          -- ^ void
                 deriving (Eq)
+
+data TypeSize = Size32 | Size64
+                deriving (Eq, Show)
+
+getTypeSize :: TypeSpec -> TypeSize
+getTypeSize x = case x of
+                  IntS   -> Size32
+                  FloatS -> Size32
+                  VoidS  -> error "cannot compute size of void"
 
 instance Show TypeSpec where
     show IntS   = "int32"
@@ -86,6 +86,7 @@ data TranslationUnit = TranslationUnit
                          String         -- ^ The filename
                          [Function]     -- ^ The functions
                        deriving (Show, Eq)
+
 
 ------------------------------------------------------------------------
 -- Parsing functions----------------------------------------------------

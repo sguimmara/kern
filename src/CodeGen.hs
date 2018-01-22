@@ -1,7 +1,7 @@
 module CodeGen
     ( genAssembly
     , Register (..)
-    , Operand (..)
+    , Operand (..), fit
     , Asm (..)
     , Size (..)
     , SymbolTable (..)
@@ -10,7 +10,6 @@ module CodeGen
     , mkParamMap
     , mkBodyMap
     , lookupTbl
-    , loc
     , genFunc
     , genStmt
     , genRet
@@ -20,7 +19,7 @@ import AST
 
 import Data.Text    (pack, unpack)
 import Data.Char    (toLower)
-import Data.List    (intercalate)
+import Data.List    (intercalate, find)
 
 ------------------------------------------------------------------------
 --- Registers ----------------------------------------------------------
@@ -49,6 +48,8 @@ pushq = Push Q
 popl = Pop L
 pushl = Push L
 
+ret = Ret
+
 movq = Mov Q
 movl = Mov L
 
@@ -72,9 +73,6 @@ instance Show SymbolTable where
 
 data SymMap = SymMap SymType Identifier TypeSpec Location
               deriving (Eq)
-
-loc :: SymMap -> Location
-loc (SymMap _ _ _ l) = l
 
 instance Show SymMap where
   show (SymMap symty ident ty loc) =
@@ -180,11 +178,38 @@ genStmt :: SymbolTable -> Statement -> [Asm]
 genStmt st (ReturnStmt ret) = genRet st ret
 
 genRet :: SymbolTable -> Return -> [Asm]
-genRet _ ReturnVoid       = [ Rep Ret ]
+genRet _ ReturnVoid       = [ Rep ret ]
 genRet _ (ReturnLit lit)  = [ movq rbp rsp
                             , movl (genLit lit) eax
                             , popq rbp
-                            , Ret ]
+                            , ret ]
+genRet st (ReturnVar var) = [ movq rbp rsp
+                            , movl pos eax
+                            , popq rbp
+                            , ret ]
+  where (SymMap _ _ ty loc) = lookupTbl st var
+        size   = getTypeSize ty
+        pos    = case loc of
+                   LocReg reg -> OpReg $ fit reg size
+
+registerSizes =
+  [ (Rax, Eax)
+  , (Rbx, Ebx)
+  , (Rcx, Ecx)
+  , (Rdx, Edx)
+  , (Rbp, Ebp)
+  , (Rsi, Esi)
+  , (Rdi, Edi)
+  , (Rsp, Esp)
+  ]
+
+-- Select the register that fits with the size
+-- e.g : if the size is 4 bytes and the register is RDI, return EDI
+fit :: Register -> TypeSize -> Register
+fit r s = let m = find (\x -> fst x == r) registerSizes in
+               case m of
+                 Just (r64, r32) -> if s == Size32 then r32 else r64
+                 Nothing         -> r
 
 genLit :: Literal -> Operand
 genLit (IntLit x) = OpValue x
