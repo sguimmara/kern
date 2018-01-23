@@ -4,18 +4,13 @@ module Compiler
     ( compile
     ) where
 
-compile = undefined
+import Data.Text         (Text, unpack, pack)
 
--- import Data.Text         (Text, unpack, pack)
--- import Text.Parsec       (parse, ParseError)
--- import Text.Parsec.Error (errorMessages, messageString)
+import qualified AST as AST
+import qualified Parser as P
+import qualified CodeGen.Assembly as ASM
+import qualified Formatters.ATTAssembly as FMT
 
--- import AST              (translunit)
--- import CodeGen
--- import Formatter        (prettyPrint)
+compile :: Text -> Text
+compile = FMT.format . ASM.gen . AST.reduce . P.parseForce
 
--- compile :: FilePath -> Text -> Either Text Text
--- compile file txt = let p = parse (translunit file) "" txt in
---                     case p of
---                         Left err -> Left (pack $ unlines $ map messageString $ errorMessages err)
---                         (Right ast) -> (Right . prettyPrint . genAssembly) ast

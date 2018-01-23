@@ -1,17 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Parser
-    ( parse
+    ( parse, parseForce
     , digits, int
     , Identifier (..), identifier
     , TranslationUnit (..), translationunit
     , ExternalDecl (..), externaldecl
     , FuncDef (..), funcdef
     , Declarator (..), declarator
+    , DirectDecl(..)
     , ParamList (..), paramlist
     , ParamDecl (..), paramdecl
     , DeclSpec (..), declspec
-    , TypeSpec (..), typespec
+    , typespec
     , PrimExpr (..), primexpr
     , Constant (..), constant
     , Statement (..), statement
@@ -19,6 +20,9 @@ module Parser
     , Jump (..), jump
     ) where
 
+import           Core
+
+import           Data.Either
 import           Data.Text           (Text, unpack, pack)
 import           Text.Parsec         ( spaces, digit
                                      , optionMaybe
@@ -30,8 +34,11 @@ import qualified Text.Parsec as P
 import           Text.Parsec.Text    (GenParser)
 import           Text.Parsec.Error   (ParseError)
 
-parse :: Text -> FilePath -> Either ParseError TranslationUnit
-parse txt path = P.parse translationunit "" txt
+parseForce :: Text -> TranslationUnit
+parseForce t = fromRight (TranslationUnit []) (parse t)
+
+parse :: Text -> Either ParseError TranslationUnit
+parse txt = P.parse translationunit "" txt
 
 ------------------------------------------------------------------------
 -- Utilities -----------------------------------------------------------
@@ -119,10 +126,6 @@ data DeclSpec = DeclTypeSpec TypeSpec
 declspec :: GenParser st DeclSpec
 declspec = choice [ DeclTypeSpec <$> typespec ]
 
-
-data TypeSpec = TVoid
-              | TInt
-                deriving (Eq, Show)
 
 typespec :: GenParser st TypeSpec
 typespec = choice [ string "void" >> return TVoid
