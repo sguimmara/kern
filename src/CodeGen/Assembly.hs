@@ -37,11 +37,11 @@ class Generable a where
 instance Generable Statement where
   gen (Return Nothing) = [ Rep Ret ]
 
-instance Generable Unit where
-  gen (Unit ss) = concatMap gen ss
+instance Generable AST where
+  gen (AST ast) = concatMap gen ast
 
-instance Generable Section where
-  gen (SectionFunc fn) = gen fn
+instance Generable TopLevelElement where
+  gen (Func fn) = gen fn
 
 instance Generable Function where
   gen (Function _ (Name n) _ _ s) = [ Label n ] ++ (concatMap gen s)

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module AST
-    ( Unit (..), reduce
-    , Section (..), reduceExtDecl
+    ( AST (..), reduce, emptyAst
+    , TopLevelElement (..), reduceExtDecl
     , Formattable (..)
     , Name (..)
     , Function (..), reduceFuncDef
@@ -43,11 +43,13 @@ instance Formattable Parameter where
   format (Param t (Just n)) = format t ++ " " ++ format n
   format (Param t Nothing)  = format t
 
-data Unit = Unit [ Section ]
+data AST = AST [ TopLevelElement ]
             deriving (Eq, Show)
 
-data Section = SectionFunc Function
-               deriving (Eq, Show)
+emptyAst = AST []
+
+data TopLevelElement = Func Function
+                       deriving (Eq, Show)
 
 data Function = Function TypeSpec Name [Parameter] [Local] [Statement]
                 deriving (Eq, Show)
@@ -70,11 +72,11 @@ data Statement = Return (Maybe Name)
 -- Reducers ------------------------------------------------------------
 ------------------------------------------------------------------------
 
-reduce :: P.TranslationUnit -> Unit
-reduce (P.TranslationUnit decls) = Unit $ map reduceExtDecl decls
+reduce :: P.TranslationUnit -> AST
+reduce (P.TranslationUnit decls) = AST $ map reduceExtDecl decls
 
-reduceExtDecl :: P.ExternalDecl -> Section
-reduceExtDecl (P.ExtDeclFuncDef fn) = SectionFunc (reduceFuncDef fn)
+reduceExtDecl :: P.ExternalDecl -> TopLevelElement
+reduceExtDecl (P.ExtDeclFuncDef fn) = Func (reduceFuncDef fn)
 
 reduceFuncDef :: P.FuncDef -> Function
 reduceFuncDef (P.FuncDef declspec declar params stmts) =

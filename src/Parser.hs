@@ -4,18 +4,31 @@ module Parser
     ( parse, parseForce
     , digits, int
     , Identifier (..), identifier
-    , TranslationUnit (..), translationunit
+    , TranslationUnit (..), translationunit, emptyTranslationUnit
     , ExternalDecl (..), externaldecl
     , FuncDef (..), funcdef
     , Declarator (..), declarator
-    , DirectDecl(..)
+    , DirectDecl (..)
     , ParamList (..), paramlist
     , ParamDecl (..), paramdecl
     , DeclSpec (..), declspec
     , typespec
+    , Expression (..), expr
+    , CondExpr (..), condexpr
+    , LogicalOrExpr (..), logicalOrExpr
+    , LogicalAndExpr (..), logicalandexpr
+    , InclusiveOrExpr (..), inclusiveOrExpr
+    , ExclusiveOrExpr (..), exclusiveOrExpr
+    , AndExpr (..), andexpr
+    , EqualExpr (..), equalExpr
+    , AssignExpr (..), assignexpr
+    , AssignOp (..), assignop
+    , PostfixExpr (..), postfixexpr
+    , UnaryExpr (..), unaryexpr
     , PrimExpr (..), primexpr
     , Constant (..), constant
     , Statement (..), statement
+    , ExpressionStmt (..), expressionStmt
     , CompoundStmt(..), compoundstmt
     , Jump (..), jump
     ) where
@@ -29,7 +42,9 @@ import           Text.Parsec         ( spaces, digit
                                      , string, char
                                      , sepBy, between
                                      , oneOf, many, many1
-                                     , choice)
+                                     , choice, try, (<|>)
+                                     , option, endBy)
+import           Text.Parsec.Char    (satisfy)
 import qualified Text.Parsec as P
 import           Text.Parsec.Text    (GenParser)
 import           Text.Parsec.Error   (ParseError)
@@ -60,6 +75,12 @@ uppercaseLetters = ['A' .. 'Z']
 letters :: String
 letters = lowercaseLetters ++ uppercaseLetters
 
+lbracket = spaces >> char '{' >> spaces
+rbracket = spaces >> char '}' >> spaces
+
+lparen = spaces >> char '(' >> spaces
+rparen = spaces >> char ')' >> spaces
+
 ------------------------------------------------------------------------
 -- Grammar -------------------------------------------------------------
 ------------------------------------------------------------------------
@@ -67,6 +88,8 @@ letters = lowercaseLetters ++ uppercaseLetters
 -- TranslationUnit -----------------------------------------------------
 data TranslationUnit = TranslationUnit  [ExternalDecl]
                        deriving (Eq, Show)
+
+emptyTranslationUnit = TranslationUnit []
 
 translationunit :: GenParser st TranslationUnit
 translationunit = TranslationUnit <$> many externaldecl
@@ -144,11 +167,131 @@ identifier = do
     return $ Identifier (pack (x : xs))
 
 -- Expressions ---------------------------------------------------------
-data PrimExpr = ConstExpr Constant
+data Expression = ExprAssignExpr AssignExpr
+                  deriving (Eq, Show)
+
+expr :: GenParser st Expression
+expr = spaces >> choice [ ExprAssignExpr <$> assignexpr ]
+
+data AssignExpr = AssignCond CondExpr
+                | AssignExprUn UnaryExpr AssignOp AssignExpr
+                  deriving (Eq, Show)
+
+assignexpr :: GenParser st AssignExpr
+assignexpr = spaces >>
+             ((try (AssignExprUn <$> unaryexpr <*> assignop <*> assignexpr))
+               <|> (AssignCond <$> condexpr))
+
+data AssignOp = Assign
                 deriving (Eq, Show)
 
+assignop :: GenParser st AssignOp
+assignop = spaces >> choice [ char '=' >> return Assign ]
+
+data CondExpr = CondExprLogOrExp LogicalOrExpr
+                deriving (Eq, Show)
+
+condexpr :: GenParser st CondExpr
+condexpr = spaces >> choice [ CondExprLogOrExp <$> logicalOrExpr ]
+
+data LogicalOrExpr = LOEAnd LogicalAndExpr
+                           deriving (Eq, Show)
+
+logicalOrExpr :: GenParser st LogicalOrExpr
+logicalOrExpr = spaces >> choice [ LOEAnd <$> logicalandexpr ]
+
+data LogicalAndExpr = LAEInclusiveOr InclusiveOrExpr
+                      deriving (Eq, Show)
+
+logicalandexpr :: GenParser st LogicalAndExpr
+logicalandexpr = spaces >> choice [ LAEInclusiveOr <$> inclusiveOrExpr ]
+
+data InclusiveOrExpr = IOEExclusiveOr ExclusiveOrExpr
+                       deriving (Eq, Show)
+
+inclusiveOrExpr :: GenParser st InclusiveOrExpr
+inclusiveOrExpr = spaces >> choice [ IOEExclusiveOr <$> exclusiveOrExpr ]
+
+data ExclusiveOrExpr = EOEAndExpr AndExpr
+                       deriving (Eq, Show)
+
+exclusiveOrExpr :: GenParser st ExclusiveOrExpr
+exclusiveOrExpr = spaces >> choice [ EOEAndExpr <$> andexpr ]
+
+data AndExpr = AndExprEqual EqualExpr
+               deriving (Eq, Show)
+
+andexpr :: GenParser st AndExpr
+andexpr = spaces >> choice [ AndExprEqual <$> equalExpr ]
+
+data EqualExpr = EqualExprRelat RelatExpr
+                 deriving (Eq, Show)
+
+equalExpr :: GenParser st EqualExpr
+equalExpr = spaces >> choice [ EqualExprRelat <$> relatExpr ]
+
+data RelatExpr = RelatShift ShiftExpr
+                 deriving (Eq, Show)
+
+relatExpr :: GenParser st RelatExpr
+relatExpr = spaces >> choice [ RelatShift <$> shiftExpr ]
+
+data ShiftExpr = ShiftExprAdd AdditiveExpr
+                 deriving (Eq, Show)
+
+shiftExpr :: GenParser st ShiftExpr
+shiftExpr = spaces >> choice [ ShiftExprAdd <$> additiveExpr ]
+
+data AdditiveExpr = AdditiveExprMul MultiplicativeExpr
+                    deriving (Eq, Show)
+
+additiveExpr :: GenParser st AdditiveExpr
+additiveExpr = spaces >> choice [ AdditiveExprMul <$> multiplicativeExpr ]
+
+data MultiplicativeExpr = MultiExprCast CastExpr
+                          deriving (Eq, Show)
+
+multiplicativeExpr :: GenParser st MultiplicativeExpr
+multiplicativeExpr = spaces >> choice [ MultiExprCast <$> castExpr ]
+
+data CastExpr = CastExprUn UnaryExpr
+                deriving (Eq, Show)
+
+castExpr :: GenParser st CastExpr
+castExpr = spaces >> choice [ CastExprUn <$> unaryexpr]
+
+data UnaryExpr = UnaryExprPF PostfixExpr
+                 deriving (Eq, Show)
+
+unaryexpr :: GenParser st UnaryExpr
+unaryexpr = choice [ UnaryExprPF <$> postfixexpr ]
+
+data PostfixExpr = PFPrimeExpr PrimExpr
+                   deriving (Eq, Show)
+
+postfixexpr :: GenParser st PostfixExpr
+postfixexpr = choice [ PFPrimeExpr <$> primexpr ]
+
+data PrimExpr = ConstExpr Constant
+              | IdentExpr Identifier
+              | StringExpr Text
+              | ParentExpr Expression
+                deriving (Eq, Show)
+
+
 primexpr :: GenParser st PrimExpr
-primexpr = choice [ ConstExpr <$> constant ]
+primexpr = choice [ ConstExpr <$> constant
+                  , IdentExpr <$> identifier
+                  , StringExpr <$> cstr
+                  , between lparen rparen (ParentExpr <$> expr) ] -- TODO parse parentheses
+
+cstr :: GenParser st Text
+cstr = do
+  spaces
+  _ <- char '"'
+  s <- many1 $ satisfy (/= '"')
+  _ <- char '"'
+  return (pack s)
 
 data Constant = IntConst Int
               -- | CharConst Char
@@ -161,20 +304,32 @@ constant = choice [ IntConst <$> int ]
 
 -- Statements ----------------------------------------------------------
 data Statement = JumpStmt Jump
+               | ExprStmt ExpressionStmt
                | Compound CompoundStmt
                  deriving (Eq, Show)
 
 statement :: GenParser st Statement
-statement = choice [ JumpStmt <$> jump ]
+statement = choice [ ExprStmt <$> expressionStmt
+                   , JumpStmt <$> jump ]
 
+
+data ExpressionStmt = ExpressionStmt (Maybe Expression)
+                      deriving (Eq, Show)
+
+followedBy p end = p >>= \r -> end >> return r
+
+semi :: GenParser st ()
+semi = spaces >> char ';' >> spaces
+
+expressionStmt :: GenParser st ExpressionStmt
+expressionStmt = ExpressionStmt <$> (semi >> return Nothing) <|>
+                 ExpressionStmt <$> ((expr `followedBy` semi) >>= \x -> return (Just x))
 
 data CompoundStmt = CompoundStmt [Statement]
                     deriving (Eq, Show)
 
 compoundstmt :: GenParser st CompoundStmt
-compoundstmt = between (spaces >> char '{' >> spaces)
-                       (spaces >> char '}' >> spaces)
-                       (CompoundStmt <$> many statement)
+compoundstmt = between lbracket rbracket (CompoundStmt <$> many statement)
 
 data Jump = Goto Identifier
           | Continue
