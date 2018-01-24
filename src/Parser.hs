@@ -19,6 +19,11 @@ module Parser
     , LogicalAndExpr (..), logicalandexpr
     , InclusiveOrExpr (..), inclusiveOrExpr
     , ExclusiveOrExpr (..), exclusiveOrExpr
+    , MultiplicativeExpr (..), multiplicativeExpr
+    , AdditiveExpr (..), additiveExpr
+    , ShiftExpr (..), shiftExpr
+    , RelatExpr (..), relatExpr
+    , CastExpr (..), castExpr
     , AndExpr (..), andexpr
     , EqualExpr (..), equalExpr
     , AssignExpr (..), assignexpr
@@ -151,8 +156,8 @@ declspec = choice [ DeclTypeSpec <$> typespec ]
 
 
 typespec :: GenParser st TypeSpec
-typespec = choice [ string "void" >> return TVoid
-                  , string "int" >> return TInt ]
+typespec = choice [ string "void" >> return VoidT
+                  , string "int" >> return IntT ]
 
 -- Identifiers ---------------------------------------------------------
 newtype Identifier = Identifier Text
@@ -188,11 +193,11 @@ data AssignOp = Assign
 assignop :: GenParser st AssignOp
 assignop = spaces >> choice [ char '=' >> return Assign ]
 
-data CondExpr = CondExprLogOrExp LogicalOrExpr
+data CondExpr = CondExprLogOrExpr LogicalOrExpr
                 deriving (Eq, Show)
 
 condexpr :: GenParser st CondExpr
-condexpr = spaces >> choice [ CondExprLogOrExp <$> logicalOrExpr ]
+condexpr = spaces >> choice [ CondExprLogOrExpr <$> logicalOrExpr ]
 
 data LogicalOrExpr = LOEAnd LogicalAndExpr
                            deriving (Eq, Show)

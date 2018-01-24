@@ -4,8 +4,10 @@ module AST
     , TopLevelElement (..), reduceExtDecl
     , Formattable (..)
     , Name (..)
+    , Literal (..)
     , Function (..), reduceFuncDef
-    , Statement (..)
+    , Statement (..), reduceStmt, reduceExprStmt
+    , Expression (..), reduceExpr, reduceAssignExpr
     , Parameter (..)
     , Local (..)
     ) where
@@ -24,13 +26,18 @@ newtype Name = Name Text
 instance Formattable Name where
   format (Name x) = unpack x
 
+data Literal = IntL Int
+               deriving (Eq)
+
+instance Show Literal where
+  show (IntL n) = show n ++ "i"
 
 data Local = Local TypeSpec Name
              deriving (Eq, Show)
 
 instance Formattable TypeSpec where
-  format TInt   = "int"
-  format TVoid  = "void"
+  format IntT   = "int"
+  format VoidT  = "void"
 
 instance Formattable Local where
   format (Local ty n) = format n ++ " :: " ++ format ty ++ " "
@@ -62,9 +69,27 @@ instance Formattable Function where
           locals = "-- locals --\n" ++ (intercalate "\n" $ map format l)
 
 
+data Expression = Add Expression Expression
+                | Mul Expression Expression
+                | Div Expression Expression
+                | AssignEq Expression Expression
+                | Var Name
+                | Constant Literal
+                  deriving (Eq)
+
+instance Show Expression where
+  show (Var (Name n)) = unpack n
+  show (Constant l)   = show l
+  show (Add a b)      = (show a) ++ " + " ++ (show b)
+  show (Mul a b)      = (show a) ++ " * " ++ (show b)
+  show (Div a b)      = (show a) ++ " / " ++ (show b)
+  show (AssignEq l r) = (show l) ++ " := " ++ (show r)
+
 data Statement = Return (Maybe Name)
                | Goto Name
                | Continue
+               | Nop
+               | ExprStmt Expression
                | Break
                  deriving (Eq, Show)
 
@@ -109,9 +134,65 @@ reduceCompoundStmt (P.CompoundStmt stmts) = map reduceStmt stmts
 
 reduceStmt :: P.Statement -> Statement
 reduceStmt (P.JumpStmt jump) = reduceJump jump
+reduceStmt (P.ExprStmt exprstmt) = reduceExprStmt exprstmt
 
 reduceJump :: P.Jump -> Statement
 reduceJump (P.Goto ident) = Goto $ reduceIdentifier ident
 reduceJump (P.Continue) = Continue
 reduceJump (P.Break) = Break
 reduceJump (P.Return Nothing) = Return Nothing
+
+reduceExprStmt :: P.ExpressionStmt -> Statement
+reduceExprStmt (P.ExpressionStmt Nothing) = Nop
+reduceExprStmt (P.ExpressionStmt (Just expr)) = ExprStmt $ reduceExpr expr
+
+reduceExpr :: P.Expression -> Expression
+reduceExpr (P.ExprAssignExpr ae) = reduceAssignExpr ae
+
+reduceAssignExpr :: P.AssignExpr -> Expression
+reduceAssignExpr (P.AssignExprUn unary (P.Assign) expr) =
+  AssignEq (reduceUnaryExpr unary) (reduceAssignExpr expr)
+reduceAssignExpr (P.AssignCond e) = reduceCondExpr e
+
+reduceCondExpr :: P.CondExpr -> Expression
+reduceCondExpr (P.CondExprLogOrExpr e) = reduceLogicalOrExpr e
+
+reduceLogicalOrExpr :: P.LogicalOrExpr -> Expression
+reduceLogicalOrExpr (P.LOEAnd e) = reduceLogicalAndExpr e
+
+reduceLogicalAndExpr :: P.LogicalAndExpr -> Expression
+reduceLogicalAndExpr (P.LAEInclusiveOr e) = reduceInclusiveOrExpr e
+
+reduceInclusiveOrExpr :: P.InclusiveOrExpr -> Expression
+reduceInclusiveOrExpr (P.IOEExclusiveOr e) = reduceExclusiveOrExpr e
+
+reduceExclusiveOrExpr :: P.ExclusiveOrExpr -> Expression
+reduceExclusiveOrExpr (P.EOEAndExpr e) = reduceAndExpr e
+
+reduceAndExpr :: P.AndExpr -> Expression
+reduceAndExpr (P.AndExprEqual e) = reduceEqualExpr e
+
+reduceEqualExpr :: P.EqualExpr -> Expression
+reduceEqualExpr (P.EqualExprRelat e) = reduceRelatExpr e
+
+reduceRelatExpr :: P.RelatExpr -> Expression
+reduceRelatExpr (P.RelatShift e) = reduceShiftExpr e
+
+reduceShiftExpr :: P.ShiftExpr -> Expression
+reduceShiftExpr (P.ShiftExprAdd e) = reduceAdditiveExpr e
+
+reduceAdditiveExpr :: P.AdditiveExpr -> Expression
+reduceAdditiveExpr (P.AdditiveExprMul e) = reduceMultiplicativeExpr e
+
+reduceMultiplicativeExpr :: P.MultiplicativeExpr -> Expression
+reduceMultiplicativeExpr (P.MultiExprCast e) = reduceCastExpr e
+
+reduceCastExpr :: P.CastExpr -> Expression
+reduceCastExpr (P.CastExprUn e) = reduceUnaryExpr e
+
+reduceUnaryExpr :: P.UnaryExpr -> Expression
+reduceUnaryExpr (P.UnaryExprPF (P.PFPrimeExpr (P.IdentExpr ident))) = Var $ reduceIdentifier ident
+reduceUnaryExpr (P.UnaryExprPF (P.PFPrimeExpr (P.ConstExpr const))) = reduceConstant const
+
+reduceConstant :: P.Constant -> Expression
+reduceConstant (P.IntConst n) = Constant (IntL n)

@@ -2,6 +2,6 @@ module Core
     ( TypeSpec (..)
     ) where
 
-data TypeSpec = TVoid
-              | TInt
+data TypeSpec = VoidT
+              | IntT
                 deriving (Eq, Show)
