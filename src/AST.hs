@@ -91,7 +91,14 @@ data Statement = Return (Maybe Name)
                | Nop
                | ExprStmt Expression
                | Break
-                 deriving (Eq, Show)
+                 deriving (Eq)
+
+instance Show Statement where
+  show Break = "break;"
+  show Continue = "continue;"
+  show (Goto name) = "goto " ++ (show name) ++ ";"
+  show (Return n) = "return;"
+  show (ExprStmt e) = show e
 
 ------------------------------------------------------------------------
 -- Reducers ------------------------------------------------------------

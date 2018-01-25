@@ -2,7 +2,7 @@
 
 module Parser
     ( parse, parseForce
-    , digits, int
+    , digits, int, float, decimal
     , Identifier (..), identifier
     , TranslationUnit (..), translationunit, emptyTranslationUnit
     , ExternalDecl (..), externaldecl
@@ -42,7 +42,7 @@ import           Core
 
 import           Data.Either
 import           Data.Text           (Text, unpack, pack)
-import           Text.Parsec         ( spaces, digit
+import           Text.Parsec         ( spaces, digit, anyChar
                                      , optionMaybe
                                      , string, char
                                      , sepBy, between
@@ -68,8 +68,27 @@ digits = ['0' .. '9']
 
 int :: GenParser st Int
 int = do
-    x <- many1 digit
-    return $ (read x :: Int)
+  x <- many1 digit
+  return $ (read x :: Int)
+
+decimal :: GenParser st String
+decimal = do
+  s <- sequence [ many1 digit, string ".", many1 digit ]
+  return $ concat s
+
+double :: GenParser st Double
+double = do
+  d <- decimal
+  return (read d :: Double)
+
+float :: GenParser st Float
+float = do
+  d <- decimal
+  char 'f'
+  return (read d :: Float)
+
+charLiteral :: GenParser st Char
+charLiteral = between (char '\'') (char '\'') anyChar
 
 lowercaseLetters :: String
 lowercaseLetters = ['a' .. 'z']
@@ -299,13 +318,17 @@ cstr = do
   return (pack s)
 
 data Constant = IntConst Int
-              -- | CharConst Char
-              -- | FloatConst Float
+              | FloatConst Float
+              | DoubleConst Double
+              | CharConst Char
               -- | EnumConst
                 deriving (Eq, Show)
 
 constant :: GenParser st Constant
-constant = choice [ IntConst <$> int ]
+constant = choice [ CharConst <$> charLiteral
+                  , try (FloatConst <$> float)
+                  , try (DoubleConst <$> double)
+                  , IntConst <$> int ]
 
 -- Statements ----------------------------------------------------------
 data Statement = JumpStmt Jump
