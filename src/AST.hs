@@ -2,7 +2,6 @@
 module AST
     ( AST (..), reduce, emptyAst
     , TopLevelElement (..), reduceExtDecl
-    , Formattable (..)
     , Name (..)
     , Literal (..)
     , Function (..), reduceFuncDef
@@ -14,8 +13,9 @@ module AST
 
 import           Core
 import qualified Parser as P
-import           Data.List     (intercalate)
-import           Data.Text     (Text, pack, unpack)
+import           Data.List           (intercalate)
+import           Data.Text           (Text, pack, unpack)
+import           Text.Parsec.Error   (ParseError)
 
 class Formattable a where
   format :: a -> String
@@ -75,15 +75,15 @@ data Expression = Add Expression Expression
                 | AssignEq Expression Expression
                 | Var Name
                 | Constant Literal
-                  deriving (Eq)
+                  deriving (Eq, Show)
 
-instance Show Expression where
-  show (Var (Name n)) = unpack n
-  show (Constant l)   = show l
-  show (Add a b)      = (show a) ++ " + " ++ (show b)
-  show (Mul a b)      = (show a) ++ " * " ++ (show b)
-  show (Div a b)      = (show a) ++ " / " ++ (show b)
-  show (AssignEq l r) = (show l) ++ " := " ++ (show r)
+-- instance Show Expression where
+--   show (Var (Name n)) = unpack n
+--   show (Constant l)   = show l
+--   show (Add a b)      = (show a) ++ " + " ++ (show b)
+--   show (Mul a b)      = (show a) ++ " * " ++ (show b)
+--   show (Div a b)      = (show a) ++ " / " ++ (show b)
+--   show (AssignEq l r) = (show l) ++ " := " ++ (show r)
 
 data Statement = Return (Maybe Name)
                | Goto Name
@@ -91,21 +91,21 @@ data Statement = Return (Maybe Name)
                | Nop
                | ExprStmt Expression
                | Break
-                 deriving (Eq)
+                 deriving (Eq, Show)
 
-instance Show Statement where
-  show Break = "break;"
-  show Continue = "continue;"
-  show (Goto name) = "goto " ++ (show name) ++ ";"
-  show (Return n) = "return;"
-  show (ExprStmt e) = show e
+-- instance Show Statement where
+--   show Break = "break;"
+--   show Continue = "continue;"
+--   show (Goto name) = "goto " ++ (show name) ++ ";"
+--   show (Return n) = "return;"
+--   show (ExprStmt e) = show e
 
 ------------------------------------------------------------------------
 -- Reducers ------------------------------------------------------------
 ------------------------------------------------------------------------
 
-reduce :: P.TranslationUnit -> AST
-reduce (P.TranslationUnit decls) = AST $ map reduceExtDecl decls
+reduce :: P.TranslationUnit -> Either ParseError AST
+reduce (P.TranslationUnit decls) = Right $ AST $ map reduceExtDecl decls
 
 reduceExtDecl :: P.ExternalDecl -> TopLevelElement
 reduceExtDecl (P.ExtDeclFuncDef fn) = Func (reduceFuncDef fn)
@@ -144,10 +144,10 @@ reduceStmt (P.JumpStmt jump) = reduceJump jump
 reduceStmt (P.ExprStmt exprstmt) = reduceExprStmt exprstmt
 
 reduceJump :: P.Jump -> Statement
-reduceJump (P.Goto ident) = Goto $ reduceIdentifier ident
-reduceJump (P.Continue) = Continue
-reduceJump (P.Break) = Break
-reduceJump (P.Return Nothing) = Return Nothing
+reduceJump (P.Goto ident)      = Goto $ reduceIdentifier ident
+reduceJump (P.Continue)        = Continue
+reduceJump (P.Break)           = Break
+reduceJump (P.Return Nothing)  = Return Nothing
 
 reduceExprStmt :: P.ExpressionStmt -> Statement
 reduceExprStmt (P.ExpressionStmt Nothing) = Nop

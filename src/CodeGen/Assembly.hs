@@ -1,5 +1,5 @@
 module CodeGen.Assembly
-    ( Generable (..)
+    ( Generable (..), generate
     , Register (..)
     , Operand (..)
     , Instr (..)
@@ -8,7 +8,7 @@ module CodeGen.Assembly
 import           Core
 import           AST
 
-import           Data.Text       (Text)
+import           Data.Text           (Text)
 
 ------------------------------------------------------------------------
 --- Registers ----------------------------------------------------------
@@ -35,10 +35,15 @@ class Generable a where
   gen :: a -> [Instr]
 
 instance Generable Statement where
-  gen (Return Nothing) = [ Rep Ret ]
+  gen (Return Nothing)  = [ Ret ]
+  gen (Return (Just n)) = [ Ret ]
+  gen _ = []
 
 instance Generable AST where
   gen (AST ast) = concatMap gen ast
+
+generate :: AST -> [Instr]
+generate ast = gen ast
 
 instance Generable TopLevelElement where
   gen (Func fn) = gen fn

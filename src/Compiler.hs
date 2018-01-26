@@ -1,16 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Compiler
-    ( compile
+    ( process, pass
     ) where
 
-import Data.Text         (Text, unpack, pack)
+import Data.Text              (Text, unpack, pack)
+import Data.Either            (fromRight, isRight, fromLeft)
+import Text.Parsec.Error      (ParseError)
 
-import qualified AST as AST
-import qualified Parser as P
-import qualified CodeGen.Assembly as ASM
-import qualified Formatters.ATTAssembly as FMT
+import Parser                 (parse)
+import AST                    (reduce)
+import CodeGen.Assembly       (generate)
+import Formatters.ATTAssembly (format)
 
-compile :: Text -> Text
-compile = FMT.format . ASM.gen . AST.reduce . P.parseForce
+process t = parse t >>= reduce >>= pass generate >>= pass format
 
+pass :: (a -> b) -> a -> (Either l b)
+pass f x = Right (f x)

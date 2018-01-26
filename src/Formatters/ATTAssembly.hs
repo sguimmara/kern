@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Formatters.ATTAssembly
-    ( format, printToStdout, emit
-    , Listing (..), formatListing
+    ( format, emit
     , Line (..), emitLine
     ) where
 
@@ -18,18 +17,16 @@ data Line = Line Bool Text
 emitLine :: Line -> Text
 emitLine (Line indent txt) = if indent then T.cons '\t' txt else txt
 
-type Listing = [Line]
-
-printToStdout :: [Instr] -> IO ()
-printToStdout = TIO.putStrLn . format
-
-formatListing :: Listing -> Text
-formatListing ls = T.unlines $ map emitLine ls
-
 format :: [Instr] -> Text
-format = formatListing . (map emit)
+format = T.unlines .(map emitLine) . (map emit)
+
+line :: Text -> Line
+line t = Line False t
+
+ind :: Text -> Line
+ind x = Line True x
 
 emit :: Instr -> Line
-emit Ret                = Line True "ret"
-emit (Rep Ret)          = Line True "rep ret"
-emit (Label t)          = Line False (T.snoc t ':')
+emit Ret                = ind "ret"
+emit (Rep Ret)          = ind "rep ret"
+emit (Label t)          = line (T.snoc t ':')
