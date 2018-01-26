@@ -1,6 +1,6 @@
-name:                ccomp
+name:                kern
 version:             0.1.0.0
-github:              "groutcho/ccomp"
+github:              "groutcho/kern"
 license:             BSD3
 author:              "Sébastien Guimmara"
 maintainer:          "sguimmara@pobox.com"
@@ -17,7 +17,7 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on Github at <https://github.com/githubuser/ccomp#readme>
+description:         Please see the README on Github at <https://github.com/groutcho/kern#readme>
 
 dependencies:
 - base >= 4.7 && < 5
@@ -29,7 +29,7 @@ library:
   source-dirs: src
 
 executables:
-  ccomp:
+  kern:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -37,10 +37,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - ccomp
+    - kern
 
 tests:
-  ccomp-test:
+  kern-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -48,4 +48,4 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - ccomp
+    - kern

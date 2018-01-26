@@ -10,8 +10,8 @@ import Text.Parsec.Error      (ParseError)
 
 import Parser                 (parse)
 import AST                    (reduce)
-import CodeGen.Assembly       (generate)
-import Formatters.ATTAssembly (format)
+import Arch.X64               (generate)
+import Syntax.ATandT          (format)
 
 process t = parse t >>= reduce >>= pass generate >>= pass format
 

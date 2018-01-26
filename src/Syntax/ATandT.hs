@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Formatters.ATTAssembly
+module Syntax.ATandT
     ( format, emit
     , Line (..), emitLine
     ) where
 
-import CodeGen.Assembly
+import Arch.X64
 
 import qualified Data.Text    as T
 import qualified Data.Text.IO as TIO

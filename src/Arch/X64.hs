@@ -1,4 +1,4 @@
-module CodeGen.Assembly
+module Arch.X64
     ( Generable (..), generate
     , Register (..)
     , Operand (..)
