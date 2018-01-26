@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Parser
-    ( parse, parseForce
+    ( parse
     , digits, int, float, decimal
     , Identifier (..), identifier
     , TranslationUnit (..), translationunit, emptyTranslationUnit
@@ -53,9 +53,6 @@ import           Text.Parsec.Char    (satisfy)
 import qualified Text.Parsec as P
 import           Text.Parsec.Text    (GenParser)
 import           Text.Parsec.Error   (ParseError)
-
-parseForce :: Text -> TranslationUnit
-parseForce t = fromRight (TranslationUnit []) (parse t)
 
 parse :: Text -> Either ParseError TranslationUnit
 parse txt = P.parse translationunit "" txt
@@ -337,8 +334,8 @@ data Statement = JumpStmt Jump
                  deriving (Eq, Show)
 
 statement :: GenParser st Statement
-statement = choice [ ExprStmt <$> expressionStmt
-                   , JumpStmt <$> jump ]
+statement = choice [ JumpStmt <$> jump
+                   , ExprStmt <$> expressionStmt ]
 
 
 data ExpressionStmt = ExpressionStmt (Maybe Expression)
