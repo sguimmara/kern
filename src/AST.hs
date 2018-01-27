@@ -1,171 +1,205 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 module AST
-    ( Variable (..), variable
-    , Identifier (..), identifier
-    , Literal (..), literal
-    , Statement (..), statement
-    , Return (..), returnstmt
-    , TypeSpec (..), typespec
-    , TypeSize (..), getTypeSize
-    , Parameter (..), parameter
-    , ParamList, paramlist
-    , Function (..), function
-    , FuncBody, body, getBody
-    , TranslationUnit (..), translunit
+    ( AST (..), reduce, emptyAst
+    , TopLevelElement (..), reduceExtDecl
+    , Name (..)
+    , Literal (..)
+    , Function (..), reduceFuncDef
+    , Statement (..), reduceStmt, reduceExprStmt
+    , Expression (..), reduceExpr, reduceAssignExpr
+    , Parameter (..)
+    , Local (..)
     ) where
 
-import Data.Text        (Text, unpack, pack)
-import Text.Parsec
-import Text.Parsec.Text
+import           Core
+import qualified Parser as P
+import           Data.List           (intercalate)
+import           Data.Text           (Text, pack, unpack)
+import           Text.Parsec.Error   (ParseError)
 
-------------------------------------------------------------------------
--- AST definitions -----------------------------------------------------
-------------------------------------------------------------------------
+class Formattable a where
+  format :: a -> String
 
--- Type specifiers -----------------------------------------------------
-data TypeSpec = IntS            -- ^ int
-              | VoidS           -- ^ void
-              | FloatS          -- ^ void
-                deriving (Eq)
+newtype Name = Name Text
+               deriving (Eq, Show)
 
-data TypeSize = Size32 | Size64
+instance Formattable Name where
+  format (Name x) = unpack x
+
+data Literal = IntL Int
+               deriving (Eq)
+
+instance Show Literal where
+  show (IntL n) = show n ++ "i"
+
+data Local = Local TypeSpec Name
+             deriving (Eq, Show)
+
+instance Formattable TypeSpec where
+  format IntT   = "int"
+  format VoidT  = "void"
+
+instance Formattable Local where
+  format (Local ty n) = format n ++ " :: " ++ format ty ++ " "
+
+
+data Parameter = Param TypeSpec (Maybe Name)
+                 deriving (Eq, Show)
+
+instance Formattable Parameter where
+  format (Param t (Just n)) = format t ++ " " ++ format n
+  format (Param t Nothing)  = format t
+
+data AST = AST [ TopLevelElement ]
+            deriving (Eq, Show)
+
+emptyAst = AST []
+
+data TopLevelElement = Func Function
+                       deriving (Eq, Show)
+
+data Function = Function TypeSpec Name [Parameter] [Local] [Statement]
                 deriving (Eq, Show)
 
-getTypeSize :: TypeSpec -> TypeSize
-getTypeSize x = case x of
-                  IntS   -> Size32
-                  FloatS -> Size32
-                  VoidS  -> error "cannot compute size of void"
-
-instance Show TypeSpec where
-    show IntS   = "int32"
-    show VoidS  = "void"
-    show FloatS = "float32"
-
--- Variables, literals and unary operators -----------------------------
-data Variable = Var TypeSpec Identifier
-                deriving (Show, Eq)
-
-data Literal = IntLit Int
-               deriving (Show, Eq)
-
-newtype Identifier = Ident Text
-                     deriving (Eq)
-
-instance Show Identifier where
-    show (Ident i) = unpack i
+instance Formattable Function where
+  format (Function ty n p l _) = typ ++ " " ++ name ++ params ++ "\n" ++ locals
+    where typ    = format ty
+          name   = format n
+          params = "(" ++ (intercalate ", " $ map format p) ++ ")"
+          locals = "-- locals --\n" ++ (intercalate "\n" $ map format l)
 
 
--- Statements ----------------------------------------------------------
-data Statement = ReturnStmt Return
-                 deriving (Show, Eq)
+data Expression = Add Expression Expression
+                | Mul Expression Expression
+                | Div Expression Expression
+                | AssignEq Expression Expression
+                | Var Name
+                | Constant Literal
+                  deriving (Eq, Show)
 
-data Return = ReturnVar Identifier
-            | ReturnLit Literal
-            | ReturnVoid
-              deriving (Show, Eq)
+-- instance Show Expression where
+--   show (Var (Name n)) = unpack n
+--   show (Constant l)   = show l
+--   show (Add a b)      = (show a) ++ " + " ++ (show b)
+--   show (Mul a b)      = (show a) ++ " * " ++ (show b)
+--   show (Div a b)      = (show a) ++ " / " ++ (show b)
+--   show (AssignEq l r) = (show l) ++ " := " ++ (show r)
 
+data Statement = Return (Maybe Name)
+               | Goto Name
+               | Continue
+               | Nop
+               | ExprStmt Expression
+               | Break
+                 deriving (Eq, Show)
 
--- Functions -----------------------------------------------------------
-data Function = Func TypeSpec Identifier ParamList FuncBody
-                deriving (Show, Eq)
-
-getBody (Func _ _ _ b) = b
-
-type FuncBody = [Statement]
-
-type ParamList = [Parameter]
-
-newtype Parameter = Param Variable
-                    deriving (Show, Eq)
-
-
--- Translation unit ----------------------------------------------------
-data TranslationUnit = TranslationUnit
-                         String         -- ^ The filename
-                         [Function]     -- ^ The functions
-                       deriving (Show, Eq)
-
+-- instance Show Statement where
+--   show Break = "break;"
+--   show Continue = "continue;"
+--   show (Goto name) = "goto " ++ (show name) ++ ";"
+--   show (Return n) = "return;"
+--   show (ExprStmt e) = show e
 
 ------------------------------------------------------------------------
--- Parsing functions----------------------------------------------------
+-- Reducers ------------------------------------------------------------
 ------------------------------------------------------------------------
 
--- Utilities -----------------------------------------------------------
-digits :: String
-digits = ['0' .. '9']
+reduce :: P.TranslationUnit -> Either ParseError AST
+reduce (P.TranslationUnit decls) = Right $ AST $ map reduceExtDecl decls
 
-int :: GenParser st Int
-int = do
-    x <- many1 digit
-    return $ (read x :: Int)
-lowercaseLetters :: String
-lowercaseLetters = ['a' .. 'z']
+reduceExtDecl :: P.ExternalDecl -> TopLevelElement
+reduceExtDecl (P.ExtDeclFuncDef fn) = Func (reduceFuncDef fn)
 
-uppercaseLetters :: String
-uppercaseLetters = ['A' .. 'Z']
+reduceFuncDef :: P.FuncDef -> Function
+reduceFuncDef (P.FuncDef declspec declar params stmts) =
+  Function t n p l s
+    where t = reduceDeclSpec declspec
+          n = reduceDeclarator declar
+          p = reduceParamList params
+          l = []
+          s = reduceCompoundStmt stmts
 
-letters :: String
-letters = lowercaseLetters ++ uppercaseLetters
+reduceDeclSpec :: P.DeclSpec -> TypeSpec
+reduceDeclSpec (P.DeclTypeSpec ts) = ts
 
-identifier :: GenParser st Identifier
-identifier = do
-    spaces
-    let initChars = '_' : letters
-    x <- oneOf initChars
-    xs <- many $ oneOf (digits ++ initChars)
-    return $ Ident (pack (x : xs))
+reduceDeclarator :: P.Declarator -> Name
+reduceDeclarator (P.Decl (P.DeclIdent ident)) = reduceIdentifier ident
 
+reduceIdentifier :: P.Identifier -> Name
+reduceIdentifier (P.Identifier t) = Name t
 
--- Type specifiers -----------------------------------------------------
-typespec :: GenParser st TypeSpec
-typespec = do
-    let xs = map string ["int", "void", "float"]
-    spec <- choice xs
-    case spec of
-        "void"  -> return VoidS
-        "int"   -> return IntS
-        "float" -> return FloatS
+reduceParamList :: P.ParamList -> [Parameter]
+reduceParamList (P.ParamList pdecls) = map reduceParamDecl pdecls
 
--- Variables, literals and unary operators -----------------------------
-variable :: GenParser st Variable
-variable = Var <$> typespec <*> identifier
+reduceParamDecl :: P.ParamDecl -> Parameter
+reduceParamDecl (P.ParamDecl declspec declar) = Param t (Just n)
+  where t = reduceDeclSpec declspec
+        n = reduceDeclarator declar
 
-literal :: GenParser st Literal
-literal = IntLit <$> int
+reduceCompoundStmt :: P.CompoundStmt -> [Statement]
+reduceCompoundStmt (P.CompoundStmt stmts) = map reduceStmt stmts
 
+reduceStmt :: P.Statement -> Statement
+reduceStmt (P.JumpStmt jump) = reduceJump jump
+reduceStmt (P.ExprStmt exprstmt) = reduceExprStmt exprstmt
 
--- Statements ----------------------------------------------------------
-statement :: GenParser st Statement
-statement = do
-    stmt <- ReturnStmt <$> returnstmt
-    spaces
-    _ <- char ';'
-    return stmt
+reduceJump :: P.Jump -> Statement
+reduceJump (P.Goto ident)      = Goto $ reduceIdentifier ident
+reduceJump (P.Continue)        = Continue
+reduceJump (P.Break)           = Break
+reduceJump (P.Return Nothing)  = Return Nothing
 
-returnstmt :: GenParser st Return
-returnstmt = do
-    _ <- string "return"
-    spaces
-    ReturnVar <$> identifier <|> ReturnLit <$> literal <|> return ReturnVoid
+reduceExprStmt :: P.ExpressionStmt -> Statement
+reduceExprStmt (P.ExpressionStmt Nothing) = Nop
+reduceExprStmt (P.ExpressionStmt (Just expr)) = ExprStmt $ reduceExpr expr
 
+reduceExpr :: P.Expression -> Expression
+reduceExpr (P.ExprAssignExpr ae) = reduceAssignExpr ae
 
--- Functions -----------------------------------------------------------
-parameter :: GenParser st Parameter
-parameter = Param <$> variable
+reduceAssignExpr :: P.AssignExpr -> Expression
+reduceAssignExpr (P.AssignExprUn unary (P.Assign) expr) =
+  AssignEq (reduceUnaryExpr unary) (reduceAssignExpr expr)
+reduceAssignExpr (P.AssignCond e) = reduceCondExpr e
 
-paramlist :: GenParser st ParamList
-paramlist = between (spaces >> char '(') (spaces >> char ')') params
-    where params = sepBy parameter (spaces >> char ',' >> spaces)
+reduceCondExpr :: P.CondExpr -> Expression
+reduceCondExpr (P.CondExprLogOrExpr e) = reduceLogicalOrExpr e
 
-body :: GenParser st FuncBody
-body = between (spaces >> char '{') (spaces >> char '}') (spaces >> many1 statement)
+reduceLogicalOrExpr :: P.LogicalOrExpr -> Expression
+reduceLogicalOrExpr (P.LOEAnd e) = reduceLogicalAndExpr e
 
-function :: GenParser st Function
-function = spaces >> Func <$> typespec <*> identifier <*> paramlist <*> body
+reduceLogicalAndExpr :: P.LogicalAndExpr -> Expression
+reduceLogicalAndExpr (P.LAEInclusiveOr e) = reduceInclusiveOrExpr e
 
+reduceInclusiveOrExpr :: P.InclusiveOrExpr -> Expression
+reduceInclusiveOrExpr (P.IOEExclusiveOr e) = reduceExclusiveOrExpr e
 
--- Translation unit ----------------------------------------------------
-translunit :: String -> GenParser st TranslationUnit
-translunit s = TranslationUnit  s <$> many function
+reduceExclusiveOrExpr :: P.ExclusiveOrExpr -> Expression
+reduceExclusiveOrExpr (P.EOEAndExpr e) = reduceAndExpr e
+
+reduceAndExpr :: P.AndExpr -> Expression
+reduceAndExpr (P.AndExprEqual e) = reduceEqualExpr e
+
+reduceEqualExpr :: P.EqualExpr -> Expression
+reduceEqualExpr (P.EqualExprRelat e) = reduceRelatExpr e
+
+reduceRelatExpr :: P.RelatExpr -> Expression
+reduceRelatExpr (P.RelatShift e) = reduceShiftExpr e
+
+reduceShiftExpr :: P.ShiftExpr -> Expression
+reduceShiftExpr (P.ShiftExprAdd e) = reduceAdditiveExpr e
+
+reduceAdditiveExpr :: P.AdditiveExpr -> Expression
+reduceAdditiveExpr (P.AdditiveExprMul e) = reduceMultiplicativeExpr e
+
+reduceMultiplicativeExpr :: P.MultiplicativeExpr -> Expression
+reduceMultiplicativeExpr (P.MultiExprCast e) = reduceCastExpr e
+
+reduceCastExpr :: P.CastExpr -> Expression
+reduceCastExpr (P.CastExprUn e) = reduceUnaryExpr e
+
+reduceUnaryExpr :: P.UnaryExpr -> Expression
+reduceUnaryExpr (P.UnaryExprPF (P.PFPrimeExpr (P.IdentExpr ident))) = Var $ reduceIdentifier ident
+reduceUnaryExpr (P.UnaryExprPF (P.PFPrimeExpr (P.ConstExpr const))) = reduceConstant const
+
+reduceConstant :: P.Constant -> Expression
+reduceConstant (P.IntConst n) = Constant (IntL n)

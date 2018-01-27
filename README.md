@@ -1,24 +1,25 @@
-# ccomp
+# kern
 
-A toy C compiler written in Haskell.
-
-This follows the great tutorial from [Nora Sandler](https://norasandler.com/2017/11/29/Write-a-Compiler.html)
+A C89 (or ANSI C) compiler written in Haskell.
 
 ## Overview
 
-This compiler compiles to assembly only. It doesn't produce executables nor object files. Thus, its output is similar to GCC's -S flag, i.e :
+kern compiles C89 code into [AT&T assembly](http://www.imada.sdu.dk/Courses/DM18/Litteratur/IntelnATT.htm).
 
-    gcc -S FILE
+kern is not :
+* A preprocessor
+* An object code generator
+* A linker
 
 ## Usage
 
 To compile a C file to assembly, type
 
-    ccomp input.c
+    kern input.c
 
 The output assembly is printed to `stdout`. Redirect it to a file with
 
-    ccomp input.c > output.s
+    kern input.c > output.s
 
 For example :
 
@@ -43,18 +44,14 @@ main:
     movl    %esi, %eax
     popq    %rbp
     ret
-    .ident  "ccomp"
+    .ident  "kern"
 ```
-
-
-## Compare with GCC's -S output
-
-To check whether the compiler produced a similar output :
-
-    gcc -S input.c # produces input.s
-    ccomp input.c > output.s
 
 ## Details
 
 * Outputs [AT&T assembly](http://www.imada.sdu.dk/Courses/DM18/Litteratur/IntelnATT.htm)
 * Follows the [X86-64 System V ABI](https://software.intel.com/sites/default/files/article/402129/mpx-linux64-abi.pdf)
+
+## Reference
+* [Writing a C compiler ](https://norasandler.com/2017/11/29/Write-a-Compiler.html) from Nora Sandler
+* [The ANSI C syntax](https://cs.wmich.edu/~gupta/teaching/cs4850/sumII06/The%20syntax%20of%20C%20in%20Backus-Naur%20form.htm)

@@ -1,19 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Compiler
-    ( compile
+    ( process, pass
     ) where
 
-import Data.Text         (Text, unpack, pack)
-import Text.Parsec       (parse, ParseError)
-import Text.Parsec.Error (errorMessages, messageString)
+import Data.Text              (Text, unpack, pack)
+import Data.Either            (fromRight, isRight, fromLeft)
+import Text.Parsec.Error      (ParseError)
 
-import AST              (translunit)
-import CodeGen
-import Formatter        (prettyPrint)
+import Parser                 (parse)
+import AST                    (reduce)
+import Arch.X64               (generate)
+import Syntax.ATandT          (format)
 
-compile :: FilePath -> Text -> Either Text Text
-compile file txt = let p = parse (translunit file) "" txt in
-                    case p of
-                        Left err -> Left (pack $ unlines $ map messageString $ errorMessages err)
-                        (Right ast) -> (Right . prettyPrint . genAssembly) ast
+process t = parse t >>= reduce >>= pass generate >>= pass format
+
+pass :: (a -> b) -> a -> (Either l b)
+pass f x = Right (f x)
