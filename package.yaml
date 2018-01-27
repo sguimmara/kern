@@ -24,6 +24,8 @@ dependencies:
 - parsec >= 3.1.0
 - text
 - filepath
+- bytestring
+- yaml
 
 library:
   source-dirs: src

@@ -1,73 +1,43 @@
 {-# LANGUAGE OverloadedStrings #-}
 module AST
-    ( AST (..), reduce, emptyAst
+    ( AST (..), reduce
     , TopLevelElement (..), reduceExtDecl
     , Name (..)
     , Literal (..)
     , Function (..), reduceFuncDef
     , Statement (..), reduceStmt, reduceExprStmt
-    , Expression (..), reduceExpr, reduceAssignExpr
+    , Expression (..), reduceExpr, reduceAssignExpr, var, intL, add
     , Parameter (..)
     , Local (..)
     ) where
 
 import           Core
 import qualified Parser as P
+import           Data.Yaml
 import           Data.List           (intercalate)
 import           Data.Text           (Text, pack, unpack)
 import           Text.Parsec.Error   (ParseError)
 
-class Formattable a where
-  format :: a -> String
-
 newtype Name = Name Text
                deriving (Eq, Show)
 
-instance Formattable Name where
-  format (Name x) = unpack x
-
 data Literal = IntL Int
-               deriving (Eq)
+               deriving (Eq, Show)
 
-instance Show Literal where
-  show (IntL n) = show n ++ "i"
-
-data Local = Local TypeSpec Name
+data Local = Local TypeSpecifier Name
              deriving (Eq, Show)
 
-instance Formattable TypeSpec where
-  format IntT   = "int"
-  format VoidT  = "void"
-
-instance Formattable Local where
-  format (Local ty n) = format n ++ " :: " ++ format ty ++ " "
-
-
-data Parameter = Param TypeSpec (Maybe Name)
+data Parameter = Param TypeSpecifier (Maybe Name)
                  deriving (Eq, Show)
-
-instance Formattable Parameter where
-  format (Param t (Just n)) = format t ++ " " ++ format n
-  format (Param t Nothing)  = format t
 
 data AST = AST [ TopLevelElement ]
             deriving (Eq, Show)
 
-emptyAst = AST []
-
 data TopLevelElement = Func Function
                        deriving (Eq, Show)
 
-data Function = Function TypeSpec Name [Parameter] [Local] [Statement]
+data Function = Function TypeSpecifier Name [Parameter] [Local] [Statement]
                 deriving (Eq, Show)
-
-instance Formattable Function where
-  format (Function ty n p l _) = typ ++ " " ++ name ++ params ++ "\n" ++ locals
-    where typ    = format ty
-          name   = format n
-          params = "(" ++ (intercalate ", " $ map format p) ++ ")"
-          locals = "-- locals --\n" ++ (intercalate "\n" $ map format l)
-
 
 data Expression = Add Expression Expression
                 | Mul Expression Expression
@@ -77,13 +47,14 @@ data Expression = Add Expression Expression
                 | Constant Literal
                   deriving (Eq, Show)
 
--- instance Show Expression where
---   show (Var (Name n)) = unpack n
---   show (Constant l)   = show l
---   show (Add a b)      = (show a) ++ " + " ++ (show b)
---   show (Mul a b)      = (show a) ++ " * " ++ (show b)
---   show (Div a b)      = (show a) ++ " / " ++ (show b)
---   show (AssignEq l r) = (show l) ++ " := " ++ (show r)
+add :: Expression -> Expression -> Expression
+add lhs rhs = Add lhs rhs
+
+var :: Text -> Expression
+var t = Var (Name t)
+
+intL :: Int -> Expression
+intL n = Constant (IntL n)
 
 data Statement = Return (Maybe Name)
                | Goto Name
@@ -93,51 +64,101 @@ data Statement = Return (Maybe Name)
                | Break
                  deriving (Eq, Show)
 
--- instance Show Statement where
---   show Break = "break;"
---   show Continue = "continue;"
---   show (Goto name) = "goto " ++ (show name) ++ ";"
---   show (Return n) = "return;"
---   show (ExprStmt e) = show e
+------------------------------------------------------------------------
+-- YAML representations ------------------------------------------------
+------------------------------------------------------------------------
+
+instance ToJSON Name where
+  toJSON (Name t) = String t
+
+instance ToJSON Literal where
+  toJSON (IntL n) = object [("int-literal", toJSON n)]
+
+instance ToJSON Local where
+  toJSON (Local ty n) = object [ ("name", toJSON n)
+                               , ("type", toJSON ty) ]
+
+instance ToJSON Parameter where
+  toJSON (Param ty Nothing)  = object [ ("type", toJSON ty) ]
+  toJSON (Param ty (Just n)) = object [ ("type", toJSON ty)
+                                      , ("name", toJSON n) ]
+
+instance ToJSON Expression where
+  toJSON (Var n)          = object [ ("var", toJSON n) ]
+  toJSON (Constant c)     = object [ ("const", toJSON c) ]
+  toJSON (Add e0 e1)      = object [ ("add", array [ toJSON e0, toJSON e1 ]) ]
+  toJSON (Mul e0 e1)      = object [ ("mul", array [ toJSON e0, toJSON e1 ]) ]
+  toJSON (Div e0 e1)      = object [ ("mul", array [ toJSON e0, toJSON e1 ]) ]
+  toJSON (AssignEq e0 e1) = object [ ("assign", array [ toJSON e0, toJSON e1 ]) ]
+
+instance ToJSON Statement where
+  toJSON (Return Nothing)  = String "return"
+  toJSON (Return (Just n)) = object [ ("return", toJSON n) ]
+  toJSON (Goto n)          = object [ ("goto", toJSON n) ]
+  toJSON Continue          = String "continue"
+  toJSON Nop               = String "no-op"
+  toJSON Break             = String "break"
+  toJSON (ExprStmt expr)   = object [ ("expr-statement", toJSON expr) ]
+
+instance ToJSON Function where
+  toJSON (Function ty n ps ls ss) =
+    object [ ("type", toJSON ty)
+           , ("name", toJSON n)
+           , ("local-variables", array $ map toJSON ls)
+           , ("parameters", array $ map toJSON ps)
+           , ("statements", array $ map toJSON ss)
+           ]
+
+instance ToJSON TopLevelElement where
+  toJSON (Func f) = object [ ("function", toJSON f) ]
+
+instance ToJSON AST where
+  toJSON (AST xs) = object [ ("AST", array $ map toJSON xs) ]
 
 ------------------------------------------------------------------------
 -- Reducers ------------------------------------------------------------
 ------------------------------------------------------------------------
 
+{-- Reducers are functions that map from parse tree nodes to AST nodes.
+    They effectively reduce the complexity of the tree by removing non
+    essential cruft that only serves in the parsing step, to ensure
+    the syntax is correct.
+--}
+
 reduce :: P.TranslationUnit -> Either ParseError AST
 reduce (P.TranslationUnit decls) = Right $ AST $ map reduceExtDecl decls
 
-reduceExtDecl :: P.ExternalDecl -> TopLevelElement
-reduceExtDecl (P.ExtDeclFuncDef fn) = Func (reduceFuncDef fn)
+reduceExtDecl :: P.ExternalDeclaration -> TopLevelElement
+reduceExtDecl (P.ExtDeclFunc fn) = Func (reduceFuncDef fn)
 
-reduceFuncDef :: P.FuncDef -> Function
-reduceFuncDef (P.FuncDef declspec declar params stmts) =
+reduceFuncDef :: P.FunctionDefinition -> Function
+reduceFuncDef (P.FunctionDefinition declspecs declar params stmts) =
   Function t n p l s
-    where t = reduceDeclSpec declspec
+    where t = reduceDeclarationSpecifier $ head declspecs --FIXME
           n = reduceDeclarator declar
-          p = reduceParamList params
+          p = [] --FIXME
           l = []
-          s = reduceCompoundStmt stmts
+          s = reduceCompoundStatement stmts
 
-reduceDeclSpec :: P.DeclSpec -> TypeSpec
-reduceDeclSpec (P.DeclTypeSpec ts) = ts
+reduceDeclarationSpecifier :: P.DeclarationSpecifier -> TypeSpecifier
+reduceDeclarationSpecifier (P.DeclSpecSpec ts) = ts
 
 reduceDeclarator :: P.Declarator -> Name
-reduceDeclarator (P.Decl (P.DeclIdent ident)) = reduceIdentifier ident
+reduceDeclarator (P.Declarator p (P.DirectDeclId ident)) = reduceIdentifier ident --FIXME
 
 reduceIdentifier :: P.Identifier -> Name
 reduceIdentifier (P.Identifier t) = Name t
 
 reduceParamList :: P.ParamList -> [Parameter]
-reduceParamList (P.ParamList pdecls) = map reduceParamDecl pdecls
+reduceParamList (P.ParamList pdecls) = map reduceParameterDeclaration pdecls
 
-reduceParamDecl :: P.ParamDecl -> Parameter
-reduceParamDecl (P.ParamDecl declspec declar) = Param t (Just n)
-  where t = reduceDeclSpec declspec
+reduceParameterDeclaration :: P.ParameterDeclaration -> Parameter
+reduceParameterDeclaration (P.ParameterDeclaration declspec declar) = Param t (Just n)
+  where t = head $ map reduceDeclarationSpecifier declspec --FIXME
         n = reduceDeclarator declar
 
-reduceCompoundStmt :: P.CompoundStmt -> [Statement]
-reduceCompoundStmt (P.CompoundStmt stmts) = map reduceStmt stmts
+reduceCompoundStatement :: P.CompoundStatement -> [Statement]
+reduceCompoundStatement (P.CompoundStatement decl stmts) = map reduceStmt stmts --FIXME
 
 reduceStmt :: P.Statement -> Statement
 reduceStmt (P.JumpStmt jump) = reduceJump jump
