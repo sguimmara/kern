@@ -26,6 +26,8 @@ dependencies:
 - filepath
 - bytestring
 - yaml
+- hspec
+- split
 
 library:
   source-dirs: src
