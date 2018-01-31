@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Grammar.Parser where
+module Kern.Grammar.Parser where
 
-import           Grammar
+import           Kern.Grammar
 
 import           Data.Either
 import           Data.List

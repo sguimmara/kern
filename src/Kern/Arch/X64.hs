@@ -1,12 +1,8 @@
-module Arch.X64
-    ( Generable (..)
-    , Register (..)
+module Kern.Arch.X64
+    ( Register (..)
     , Operand (..)
     , Instr (..)
     ) where
-
-import           Core
-import           AST
 
 import           Data.Text           (Text)
 
