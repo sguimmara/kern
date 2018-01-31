@@ -2,6 +2,7 @@
 
 module Kern.Grammar.Parser where
 
+import           Kern.Core
 import           Kern.Grammar
 
 import           Data.Either

@@ -28,6 +28,7 @@ dependencies:
 - yaml
 - hspec
 - split
+- vector
 
 library:
   source-dirs: src

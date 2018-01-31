@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c014300d3793b798f5a5db351c9878b73d1a71dff7eafb78792136c76bbba297
+-- hash: 07daf197068b1babeb553ba8e570a12bb9e33c9f15ce5da6a783965aced45ec9
 
 name:           kern
 version:        0.1.0.0
@@ -36,9 +36,12 @@ library
     , parsec >=3.1.0
     , split
     , text
+    , vector
     , yaml
   exposed-modules:
       Kern.Arch.X64
+      Kern.Bytecode
+      Kern.Core
       Kern.Formatting.ATandT
       Kern.Grammar
       Kern.Grammar.Parser
@@ -60,6 +63,7 @@ executable kern
     , parsec >=3.1.0
     , split
     , text
+    , vector
     , yaml
   other-modules:
       Paths_kern
@@ -80,6 +84,7 @@ test-suite kern-test
     , parsec >=3.1.0
     , split
     , text
+    , vector
     , yaml
   other-modules:
       ParserSpec
