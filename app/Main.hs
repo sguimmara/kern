@@ -3,21 +3,35 @@ module Main where
 
 import           System.Environment
 import           System.Exit
-import           Data.Text              (pack, unpack)
+import qualified Data.ByteString as BS
+import           Data.Yaml.Pretty
+import           Text.Parsec     as P
+import           Data.Yaml
+import           Data.Text              (Text, pack, unpack)
 import qualified Data.Text.IO as TIO    (readFile, putStr, putStrLn)
 import           System.FilePath        (takeFileName)
 
-import Compiler
-
+import           Kern.Grammar
+import           Kern.Grammar.Parser
 
 main :: IO ()
 main = do
     args <- getArgs
     case args of
-        []     -> TIO.putStrLn "usage: kern FILE" >> exitWith (ExitFailure 1)
-        [path] -> do
-            contents <- TIO.readFile path
-            let result = process contents
-            case result of
-                Left error -> putStrLn $ show error
-                Right asm -> TIO.putStr asm
+        ("--parse":path:[]) -> parseOnly path
+        _                   -> printUsage
+
+printUsage :: IO ()
+printUsage = do
+    TIO.putStrLn "usage: kern [--parse] FILE"
+    exitWith (ExitFailure 1)
+
+parseOnly :: FilePath -> IO ()
+parseOnly path = do
+    c <- TIO.readFile path
+    let res = P.parse translationUnit path c
+    case res of
+        (Left err) -> print err
+        (Right ok) -> BS.putStr $ encodePretty defConfig $ toJSON ok
+
+yaml x = BS.putStr $ encodePretty defConfig $ toJSON x

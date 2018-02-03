@@ -1,12 +1,8 @@
-module Arch.X64
-    ( Generable (..), generate
-    , Register (..)
+module Kern.Arch.X64
+    ( Register (..)
     , Operand (..)
     , Instr (..)
     ) where
-
-import           Core
-import           AST
 
 import           Data.Text           (Text)
 
@@ -30,23 +26,3 @@ data Instr = Ret
            | Rep Instr
            | Label Text
              deriving (Eq, Show)
-
-class Generable a where
-  gen :: a -> [Instr]
-
-instance Generable Statement where
-  gen (Return Nothing)  = [ Ret ]
-  gen (Return (Just n)) = [ Ret ]
-  gen _ = []
-
-instance Generable AST where
-  gen (AST ast) = concatMap gen ast
-
-generate :: AST -> [Instr]
-generate ast = gen ast
-
-instance Generable TopLevelElement where
-  gen (Func fn) = gen fn
-
-instance Generable Function where
-  gen (Function _ (Name n) _ _ s) = [ Label n ] ++ (concatMap gen s)

@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Syntax.ATandT
+module Kern.Formatting.ATandT
     ( format, emit
     , Line (..), emitLine
     ) where
 
-import Arch.X64
+import Kern.Arch.X64
 
 import qualified Data.Text    as T
 import qualified Data.Text.IO as TIO

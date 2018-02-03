@@ -1,0 +1,8 @@
+import qualified Data.Yaml as Y
+import           Data.Yaml.Pretty
+import           Data.Maybe
+import           Data.Either
+import qualified Data.ByteString as BS
+import qualified Data.Vector as V
+
+yaml x = BS.putStr $ encodePretty defConfig $ Y.toJSON x
