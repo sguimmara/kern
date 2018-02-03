@@ -5,6 +5,7 @@ module Kern.AST.Parser where
 import           Kern.Core
 import           Kern.AST
 
+import           Data.Int
 import           Data.Either
 import           Data.List
 import           Data.Text        (pack)
@@ -275,12 +276,20 @@ jump = choice [ keyword "goto" >> Goto <$> identifier
               , keyword "return" >> Return <$> (optionMaybe expr)
               ] `endedBy` semi
 
-int :: GenParser st Int
-int = do
+int32 :: GenParser st Int32
+int32 = do
   ds <- many1 digit
   case ds of
     ""  -> fail "integer"
-    dds -> return (read ds :: Int)
+    dds -> return (read ds :: Int32)
+
+int64 :: GenParser st Int64
+int64 = do
+  ds <- many1 digit
+  l <- char 'l'
+  case ds of
+    ""  -> fail "integer"
+    dds -> return (read ds :: Int64)
 
 float :: GenParser st Float
 float = do
@@ -295,7 +304,8 @@ charLit = between (char '\'') (char '\'') anyChar
 
 literal :: GenParser st Literal
 literal = (try $ FloatLit <$> float) <|>
-          (IntLit <$> int) <|>
+          (try $ Int64Lit <$> int64) <|>
+          (Int32Lit <$> int32) <|>
           (CharLit <$> charLit) <?> "literal"
 
 postfixExpr :: GenParser st Expr
@@ -379,8 +389,8 @@ shift =
 
 add :: GenParser st Expr
 add =
-  (try (Add <$> mul <*> (symbol "+" >> mul))) <|>
-  (try (Sub <$> mul <*> (symbol "-" >> mul))) <|>
+  (try (AddExpr <$> mul <*> (symbol "+" >> mul))) <|>
+  (try (SubExpr <$> mul <*> (symbol "-" >> mul))) <|>
   mul
 
 mul :: GenParser st Expr

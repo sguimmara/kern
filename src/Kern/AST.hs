@@ -156,7 +156,9 @@ data Statement
   | ExprStmt (Maybe Expr)
   deriving (Eq, Show)
 
-data Body = Body [LocalVariable] [Statement]
+data Body = Body { bodyLocals :: [LocalVariable]
+                 , bodyStmts :: [Statement]
+                 }
             deriving (Eq, Show)
 
 instance ToJSON Statement where
@@ -171,7 +173,11 @@ instance ToJSON Body where
            ]
 
 data FunctionDefinition =
-  Function ExternalType Identifier Params Body
+  Function { funcType :: ExternalType
+           , funcName :: Identifier
+           , funcParams :: Params
+           , funcBody :: Body
+           }
   deriving (Eq, Show)
 
 instance ToJSON FunctionDefinition where
@@ -196,8 +202,8 @@ data Expr
   | Gt Expr Expr
   | ShiftL Expr Expr
   | ShiftR Expr Expr
-  | Add Expr Expr
-  | Sub Expr Expr
+  | AddExpr Expr Expr
+  | SubExpr Expr Expr
   | Mul Expr Expr
   | Div Expr Expr
   | Mod Expr Expr
@@ -251,9 +257,9 @@ instance ToJSON Expr where
     object [ ("shiftl", array $ fmap toJSON [e0, e1])]
   toJSON (ShiftR e0 e1) =
     object [ ("shiftr", array $ fmap toJSON [e0, e1])]
-  toJSON (Add e0 e1) =
+  toJSON (AddExpr e0 e1) =
     object [ ("add", array $ fmap toJSON [e0, e1])]
-  toJSON (Sub e0 e1) =
+  toJSON (SubExpr e0 e1) =
     object [ ("sub", array $ fmap toJSON [e0, e1])]
   toJSON (Mul e0 e1) =
     object [ ("mul", array $ fmap toJSON [e0, e1])]

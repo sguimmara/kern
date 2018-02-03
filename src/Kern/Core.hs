@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Kern.Core where
 
+import Data.Int
 import Data.Yaml
 
 data DataType
@@ -29,12 +30,14 @@ instance ToJSON DataType where
   toJSON TyFloat64 = String "f64"
 
 data Literal
-  = IntLit Int
+  = Int32Lit Int32
+  | Int64Lit Int64
   | CharLit Char
   | FloatLit Float
   deriving (Eq, Show)
 
 instance ToJSON Literal where
-  toJSON (IntLit n) = object [ ("int-literal", toJSON n) ]
+  toJSON (Int32Lit n) = object [ ("int32-literal", toJSON n) ]
+  toJSON (Int64Lit n) = object [ ("int64-literal", toJSON n) ]
   toJSON (CharLit c) = object [ ("char-literal", toJSON c) ]
   toJSON (FloatLit f) = object [ ("float-literal", toJSON f) ]
