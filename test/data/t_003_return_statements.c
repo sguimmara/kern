@@ -3,7 +3,9 @@ void foo()
     return;
 }
 
-void bar()
+int bar()
 {
-    return 4;
+    int x = 0;
+    x=2;
+    return x;
 }

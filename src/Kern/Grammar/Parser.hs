@@ -23,6 +23,9 @@ manyOrd p = do
 keyword :: String -> GenParser st ()
 keyword s = string s >> whitespace
 
+symbol :: String -> GenParser st ()
+symbol s = spaces >> string s >> spaces
+
 typeSpecifier :: GenParser st TypeSpecifier
 typeSpecifier = (try $ (keyword "short" >> return SpecShort)) <|>
                 (try $ (keyword "long" >> return SpecLong)) <|>
@@ -127,6 +130,7 @@ identifier :: GenParser st Identifier
 identifier = try $ do
   x <- letter <|> char '_' <?> "identifier"
   xs <- many (alphaNum <|> char '_')
+  spaces
   let res = (x:xs)
   if res `elem` keywords then fail ""
   else return $ Ident (pack res)
@@ -190,7 +194,7 @@ paramType = do
 
 internalType :: GenParser st InternalType
 internalType = do
-  decls <- many declarationSpecifier
+  decls <- many1 declarationSpecifier
   ptr <- optionMaybe pointer
   let (sto, spec, quals) = separateDeclSpecs decls
   let ind = case ptr of
@@ -227,7 +231,7 @@ endedBy p e = p >>= \r -> e >> return r
 paramList :: GenParser st Params
 paramList = between lparen rparen (commaSep param)
 
-initializer = spaces >> char '=' >> spaces >> (char 'x') >> return Initializer
+initializer = symbol "=" >> InitExpr <$> expr
 
 extDeclaration :: GenParser st ExternalDeclaration
 extDeclaration = choice [ FunctionDefinition <$> functionDefinition ]
@@ -236,11 +240,13 @@ translationUnit :: GenParser st TranslationUnit
 translationUnit = TranslationUnit <$> (many extDeclaration)
 
 localDeclaration :: GenParser st LocalVariable
-localDeclaration = (LocalVariable <$> internalType <*> identifier <*>
-                   (option NotInitialized initializer)) `endedBy` semi
+localDeclaration = try ((LocalVariable <$> internalType <*> identifier <*>
+                   (optionMaybe initializer)) `endedBy` semi)
 
 statement :: GenParser st Statement
-statement = choice [ Jump <$> jump ]
+statement = choice [ Jump <$> jump
+                   , ExprStmt <$> (optionMaybe expr) `endedBy` semi
+                   ]
 
 functionBody :: GenParser st Body
 functionBody =
@@ -266,5 +272,138 @@ jump :: GenParser st Jump
 jump = choice [ keyword "goto" >> Goto <$> identifier
               , keyword "continue" >> return Continue
               , keyword "break" >> return Break
-              , keyword "return" >> return ReturnVoid
+              , keyword "return" >> Return <$> (optionMaybe expr)
               ] `endedBy` semi
+
+int :: GenParser st Int
+int = do
+  ds <- many1 digit
+  case ds of
+    ""  -> fail "integer"
+    dds -> return (read ds :: Int)
+
+float :: GenParser st Float
+float = do
+  ds <- many1 digit
+  _ <- char '.'
+  dds <- many1 digit
+  suf <- char 'f'
+  return (read (ds ++ "." ++ dds) :: Float)
+
+charLit :: GenParser st Char
+charLit = between (char '\'') (char '\'') anyChar
+
+literal :: GenParser st Literal
+literal = (try $ FloatLit <$> float) <|>
+          (IntLit <$> int) <|>
+          (CharLit <$> charLit) <?> "literal"
+
+postfixExpr :: GenParser st Expr
+postfixExpr =
+  (try $ (PostfixInc <$> primExpr) `endedBy` (string "++")) <|>
+  (try $ (PostfixDec <$> primExpr) `endedBy` (string "--")) <|>
+  primExpr
+
+primExpr :: GenParser st Expr
+primExpr = (between lparen rparen expr) <|>
+           (PrimI <$> identifier) <|>
+           (PrimC <$> literal)
+
+op :: GenParser st Op
+op = choice [ symbol "=" >> return Equal
+            , symbol "*=" >> return MulEq
+            , symbol "/=" >> return DivEq
+            , symbol "%=" >> return ModEq
+            , symbol "+=" >> return AddEq
+            , symbol "-=" >> return SubEq
+            , symbol "<<=" >> return ShLEq
+            , symbol ">>=" >> return ShREq
+            , symbol "&=" >> return AndEq
+            , symbol "^=" >> return XorEq
+            , symbol "|=" >> return OrEq
+            ]
+
+expr :: GenParser st Expr
+expr = assignExpr
+
+condExpr :: GenParser st Expr
+condExpr =
+  (try (CondExpr <$> orExpr <*> (symbol "?" >> expr)
+                            <*> (symbol ":" >> orExpr))) <|>
+  orExpr
+
+orExpr :: GenParser st Expr
+orExpr =
+  (try (Or <$> andExpr <*> (symbol "||" >> andExpr))) <|>
+  andExpr
+
+andExpr :: GenParser st Expr
+andExpr =
+  (try (And <$> bwOrExpr <*> (symbol "&&" >> bwOrExpr))) <|>
+  bwOrExpr
+
+bwOrExpr :: GenParser st Expr
+bwOrExpr =
+  (try (BitwiseOr <$> xorExpr <*> (symbol "|" >> xorExpr))) <|>
+  xorExpr
+
+xorExpr :: GenParser st Expr
+xorExpr =
+  (try (Xor <$> bwAndExpr <*> (symbol "^" >> bwAndExpr))) <|>
+  bwAndExpr
+
+bwAndExpr :: GenParser st Expr
+bwAndExpr =
+  (try (BitwiseAnd <$> equalExpr <*> (symbol "&" >> equalExpr))) <|>
+  equalExpr
+
+equalExpr :: GenParser st Expr
+equalExpr =
+  (try (EqExpr <$> relat <*> (symbol "==" >> relat))) <|>
+  (try (NeqExpr <$> relat <*> (symbol "!=" >> relat))) <|>
+  relat
+
+relat :: GenParser st Expr
+relat =
+  (try (Lt <$> shift <*> (symbol "<" >> shift))) <|>
+  (try (Gt <$> shift <*> (symbol ">" >> shift))) <|>
+  (try (LtEq <$> shift <*> (symbol "<=" >> shift))) <|>
+  (try (GtEq <$> shift <*> (symbol ">=" >> shift))) <|>
+  shift
+
+shift :: GenParser st Expr
+shift =
+  (try (ShiftL <$> add <*> (symbol "<<" >> add))) <|>
+  (try (ShiftR <$> add <*> (symbol ">>" >> add))) <|>
+  add
+
+add :: GenParser st Expr
+add =
+  (try (Add <$> mul <*> (symbol "+" >> mul))) <|>
+  (try (Sub <$> mul <*> (symbol "-" >> mul))) <|>
+  mul
+
+mul :: GenParser st Expr
+mul =
+  (try (Mul <$> castExpr <*> (symbol "*" >> castExpr))) <|>
+  (try (Div <$> castExpr <*> (symbol "/" >> castExpr))) <|>
+  (try (Mod <$> castExpr <*> (symbol "%" >> castExpr))) <|>
+  castExpr
+
+castExpr = unaryExpr
+
+unaryExpr :: GenParser st Expr
+unaryExpr =
+  postfixExpr <|>
+  (try (PrefixInc <$> (symbol "++" >> unaryExpr))) <|>
+  (try (PrefixDec <$> (symbol "--" >> unaryExpr))) <|>
+  (symbol "-" >> Neg <$> castExpr) <|>
+  (symbol "+" >> Plus <$> castExpr) <|>
+  (symbol "&" >> AddrOf <$> castExpr) <|>
+  (symbol "*" >> Deref <$> castExpr) <|>
+  (symbol "!" >> Not <$> castExpr) <|>
+  (symbol "~" >> Compl <$> castExpr) <?> "unary expression"
+
+assignExpr :: GenParser st Expr
+assignExpr = (try (Assign <$> unaryExpr <*> op <*> condExpr)) <|>
+             condExpr

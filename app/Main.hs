@@ -18,9 +18,13 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
-        [] -> TIO.putStrLn "usage: kern [--parse] FILE"
-              >> exitWith (ExitFailure 1)
         ("--parse":path:[]) -> parseOnly path
+        _                   -> printUsage
+
+printUsage :: IO ()
+printUsage = do
+    TIO.putStrLn "usage: kern [--parse] FILE"
+    exitWith (ExitFailure 1)
 
 parseOnly :: FilePath -> IO ()
 parseOnly path = do
@@ -29,3 +33,5 @@ parseOnly path = do
     case res of
         (Left err) -> print err
         (Right ok) -> BS.putStr $ encodePretty defConfig $ toJSON ok
+
+yaml x = BS.putStr $ encodePretty defConfig $ toJSON x
