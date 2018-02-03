@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Kern.Grammar.Parser where
+module Kern.AST.Parser where
 
 import           Kern.Core
-import           Kern.Grammar
+import           Kern.AST
 
 import           Data.Either
 import           Data.List

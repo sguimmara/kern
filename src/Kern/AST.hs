@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Kern.Grammar where
+module Kern.AST where
 
 import Data.Text as T
 import Data.Yaml

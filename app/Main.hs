@@ -11,8 +11,8 @@ import           Data.Text              (Text, pack, unpack)
 import qualified Data.Text.IO as TIO    (readFile, putStr, putStrLn)
 import           System.FilePath        (takeFileName)
 
-import           Kern.Grammar
-import           Kern.Grammar.Parser
+import           Kern.AST
+import           Kern.AST.Parser
 
 main :: IO ()
 main = do
