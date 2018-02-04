@@ -121,11 +121,16 @@ dataType xs =
         [SpecInt] -> makeInt (ln ++ sh) (si ++ un)
         [SpecFloat] -> Left "two or more data types in declaration specifiers"
 
-keywords = [ "return", "int", "float", "double"
-           , "signed", "unsigned", "goto", "break"
-           , "continue", "if", "then", "else", "case"
-           , "default", "switch"
-           ]
+keywords =
+  [ "auto", "break", "case", "char"
+  , "const", "continue", "default", "do"
+  , "double", "else", "enum", "extern"
+  , "float", "for", "goto", "if", "int"
+  , "long", "register", "return", "short"
+  , "signed", "sizeof", "static", "struct"
+  , "switch", "typedef", "union", "unsigned"
+  , "void", "volatile", "while"
+  ]
 
 identifier :: GenParser st Identifier
 identifier = try $ do
