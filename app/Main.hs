@@ -25,7 +25,7 @@ main = do
 
 printUsage :: IO ()
 printUsage = do
-    TIO.putStrLn "usage: kern [--parse] FILE"
+    TIO.putStrLn "usage: kern [--parse | --bytecode] FILE"
     exitWith (ExitFailure 1)
 
 data StageError = ParseError P.ParseError deriving (Eq, Show)
