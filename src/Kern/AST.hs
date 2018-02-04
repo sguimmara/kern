@@ -204,9 +204,9 @@ data Expr
   | ShiftR Expr Expr
   | AddExpr Expr Expr
   | SubExpr Expr Expr
-  | Mul Expr Expr
-  | Div Expr Expr
-  | Mod Expr Expr
+  | MulExpr Expr Expr
+  | DivExpr Expr Expr
+  | ModExpr Expr Expr
   | PostfixInc Expr
   | PostfixDec Expr
   | PrefixInc Expr
@@ -261,11 +261,11 @@ instance ToJSON Expr where
     object [ ("add", array $ fmap toJSON [e0, e1])]
   toJSON (SubExpr e0 e1) =
     object [ ("sub", array $ fmap toJSON [e0, e1])]
-  toJSON (Mul e0 e1) =
+  toJSON (MulExpr e0 e1) =
     object [ ("mul", array $ fmap toJSON [e0, e1])]
-  toJSON (Div e0 e1) =
+  toJSON (DivExpr e0 e1) =
     object [ ("div", array $ fmap toJSON [e0, e1])]
-  toJSON (Mod e0 e1) =
+  toJSON (ModExpr e0 e1) =
     object [ ("mod", array $ fmap toJSON [e0, e1])]
   toJSON (PostfixInc e) =
     object [ ("postfix-inc", toJSON e) ]

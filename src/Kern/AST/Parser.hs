@@ -279,6 +279,7 @@ jump = choice [ keyword "goto" >> Goto <$> identifier
 int32 :: GenParser st Int32
 int32 = do
   ds <- many1 digit
+  spaces
   case ds of
     ""  -> fail "integer"
     dds -> return (read ds :: Int32)
@@ -286,7 +287,8 @@ int32 = do
 int64 :: GenParser st Int64
 int64 = do
   ds <- many1 digit
-  l <- char 'l'
+  suf <- oneOf "Ll"
+  spaces
   case ds of
     ""  -> fail "integer"
     dds -> return (read ds :: Int64)
@@ -297,6 +299,7 @@ float = do
   _ <- char '.'
   dds <- many1 digit
   suf <- char 'f'
+  spaces
   return (read (ds ++ "." ++ dds) :: Float)
 
 charLit :: GenParser st Char
@@ -339,65 +342,65 @@ expr = assignExpr
 condExpr :: GenParser st Expr
 condExpr =
   (try (CondExpr <$> orExpr <*> (symbol "?" >> expr)
-                            <*> (symbol ":" >> orExpr))) <|>
+                            <*> (symbol ":" >> condExpr))) <|>
   orExpr
 
 orExpr :: GenParser st Expr
 orExpr =
-  (try (Or <$> andExpr <*> (symbol "||" >> andExpr))) <|>
+  (try (Or <$> andExpr <*> (symbol "||" >> orExpr))) <|>
   andExpr
 
 andExpr :: GenParser st Expr
 andExpr =
-  (try (And <$> bwOrExpr <*> (symbol "&&" >> bwOrExpr))) <|>
+  (try (And <$> bwOrExpr <*> (symbol "&&" >> andExpr))) <|>
   bwOrExpr
 
 bwOrExpr :: GenParser st Expr
 bwOrExpr =
-  (try (BitwiseOr <$> xorExpr <*> (symbol "|" >> xorExpr))) <|>
+  (try (BitwiseOr <$> xorExpr <*> (symbol "|" >> bwOrExpr))) <|>
   xorExpr
 
 xorExpr :: GenParser st Expr
 xorExpr =
-  (try (Xor <$> bwAndExpr <*> (symbol "^" >> bwAndExpr))) <|>
+  (try (Xor <$> bwAndExpr <*> (symbol "^" >> xorExpr))) <|>
   bwAndExpr
 
 bwAndExpr :: GenParser st Expr
 bwAndExpr =
-  (try (BitwiseAnd <$> equalExpr <*> (symbol "&" >> equalExpr))) <|>
+  (try (BitwiseAnd <$> equalExpr <*> (symbol "&" >> bwAndExpr))) <|>
   equalExpr
 
 equalExpr :: GenParser st Expr
 equalExpr =
-  (try (EqExpr <$> relat <*> (symbol "==" >> relat))) <|>
-  (try (NeqExpr <$> relat <*> (symbol "!=" >> relat))) <|>
+  (try (EqExpr <$> relat <*> (symbol "==" >> equalExpr))) <|>
+  (try (NeqExpr <$> relat <*> (symbol "!=" >> equalExpr))) <|>
   relat
 
 relat :: GenParser st Expr
 relat =
-  (try (Lt <$> shift <*> (symbol "<" >> shift))) <|>
-  (try (Gt <$> shift <*> (symbol ">" >> shift))) <|>
-  (try (LtEq <$> shift <*> (symbol "<=" >> shift))) <|>
-  (try (GtEq <$> shift <*> (symbol ">=" >> shift))) <|>
+  (try (Lt <$> shift <*> (symbol "<" >> relat))) <|>
+  (try (Gt <$> shift <*> (symbol ">" >> relat))) <|>
+  (try (LtEq <$> shift <*> (symbol "<=" >> relat))) <|>
+  (try (GtEq <$> shift <*> (symbol ">=" >> relat))) <|>
   shift
 
 shift :: GenParser st Expr
 shift =
-  (try (ShiftL <$> add <*> (symbol "<<" >> add))) <|>
-  (try (ShiftR <$> add <*> (symbol ">>" >> add))) <|>
+  (try (ShiftL <$> add <*> (symbol "<<" >> shift))) <|>
+  (try (ShiftR <$> add <*> (symbol ">>" >> shift))) <|>
   add
 
 add :: GenParser st Expr
 add =
-  (try (AddExpr <$> mul <*> (symbol "+" >> mul))) <|>
-  (try (SubExpr <$> mul <*> (symbol "-" >> mul))) <|>
+  (try (AddExpr <$> mul <*> (symbol "+" >> add))) <|>
+  (try (SubExpr <$> mul <*> (symbol "-" >> add))) <|>
   mul
 
 mul :: GenParser st Expr
 mul =
-  (try (Mul <$> castExpr <*> (symbol "*" >> castExpr))) <|>
-  (try (Div <$> castExpr <*> (symbol "/" >> castExpr))) <|>
-  (try (Mod <$> castExpr <*> (symbol "%" >> castExpr))) <|>
+  (try (MulExpr <$> castExpr <*> (symbol "*" >> mul))) <|>
+  (try (DivExpr <$> castExpr <*> (symbol "/" >> mul))) <|>
+  (try (ModExpr <$> castExpr <*> (symbol "%" >> mul))) <|>
   castExpr
 
 castExpr = unaryExpr
@@ -415,5 +418,4 @@ unaryExpr =
   (symbol "~" >> Compl <$> castExpr) <?> "unary expression"
 
 assignExpr :: GenParser st Expr
-assignExpr = (try (Assign <$> unaryExpr <*> op <*> condExpr)) <|>
-             condExpr
+assignExpr = (try (Assign <$> unaryExpr <*> op <*> condExpr)) <|> condExpr
