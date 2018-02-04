@@ -29,6 +29,7 @@ dependencies:
 - hspec
 - split
 - vector
+- pretty
 
 library:
   source-dirs: src

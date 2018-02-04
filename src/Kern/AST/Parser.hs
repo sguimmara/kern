@@ -298,8 +298,8 @@ int64 = do
     ""  -> fail "integer"
     dds -> return (read ds :: Int64)
 
-float :: GenParser st Float
-float = do
+float32 :: GenParser st Float
+float32 = do
   ds <- many1 digit
   _ <- char '.'
   dds <- many1 digit
@@ -307,11 +307,20 @@ float = do
   spaces
   return (read (ds ++ "." ++ dds) :: Float)
 
+float64 :: GenParser st Double
+float64 = do
+  ds <- many1 digit
+  _ <- char '.'
+  dds <- many1 digit
+  spaces
+  return (read (ds ++ "." ++ dds) :: Double)
+
 charLit :: GenParser st Char
 charLit = between (char '\'') (char '\'') anyChar
 
 literal :: GenParser st Literal
-literal = (try $ FloatLit <$> float) <|>
+literal = (try $ Float32Lit <$> float32) <|>
+          (try $ Float64Lit <$> float64) <|>
           (try $ Int64Lit <$> int64) <|>
           (Int32Lit <$> int32) <|>
           (CharLit <$> charLit) <?> "literal"

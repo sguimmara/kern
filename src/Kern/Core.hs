@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Kern.Core where
 
+import Text.PrettyPrint (Doc)
+
 import Data.Int
 import Data.Yaml
 
@@ -33,11 +35,16 @@ data Literal
   = Int32Lit Int32
   | Int64Lit Int64
   | CharLit Char
-  | FloatLit Float
+  | Float32Lit Float
+  | Float64Lit Double
   deriving (Eq, Show)
 
 instance ToJSON Literal where
   toJSON (Int32Lit n) = object [ ("int32-literal", toJSON n) ]
   toJSON (Int64Lit n) = object [ ("int64-literal", toJSON n) ]
   toJSON (CharLit c) = object [ ("char-literal", toJSON c) ]
-  toJSON (FloatLit f) = object [ ("float-literal", toJSON f) ]
+  toJSON (Float32Lit f) = object [ ("float32-literal", toJSON f) ]
+  toJSON (Float64Lit f) = object [ ("float64-literal", toJSON f) ]
+
+class Pretty a where
+  pretty :: a -> Doc
