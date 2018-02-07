@@ -149,7 +149,6 @@ instance Pretty Expr where
   pretty (PrimI i)          = pretty i
   pretty (PrimC c)          = pretty c
   pretty (Assign lh op rh)  = pretty lh <+> pretty op <+> pretty rh
-  pretty (PrimExpr e)       = pretty e
   pretty (Neg e)            = char '-' <> pretty e
   pretty (AddrOf e)         = char '&' <> pretty e
   pretty (Not e)            = char '!' <> pretty e

@@ -214,7 +214,6 @@ data Expr
   | PrimI Identifier
   | PrimC Literal
   | Assign Expr Op Expr
-  | PrimExpr Expr
   | Neg Expr
   | AddrOf Expr
   | Not Expr
@@ -286,8 +285,6 @@ instance ToJSON Expr where
              , ("rhs", toJSON e1)
              ])
            ]
-  toJSON (PrimExpr e) =
-    object [ ("primary-expr-expr", toJSON e) ]
   toJSON (Neg e) =
     object [ ("neg", toJSON e) ]
   toJSON (AddrOf e) =

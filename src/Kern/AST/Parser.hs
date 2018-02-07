@@ -24,8 +24,11 @@ manyOrd p = do
 keyword :: String -> GenParser st ()
 keyword s = string s >> whitespace
 
-symbol :: String -> GenParser st ()
-symbol s = spaces >> string s >> spaces
+symbol :: String -> GenParser st String
+symbol s = do
+  res <- string s
+  notFollowedBy (oneOf s)
+  return res
 
 typeSpecifier :: GenParser st TypeSpecifier
 typeSpecifier = (try $ (keyword "short" >> return SpecShort)) <|>
@@ -250,8 +253,8 @@ localDeclaration = try ((LocalVariable <$> internalType <*> identifier <*>
                    (optionMaybe initializer)) `endedBy` semi)
 
 statement :: GenParser st Statement
-statement = choice [ Jump <$> jump
-                   , ExprStmt <$> (optionMaybe expr) `endedBy` semi
+statement = choice [ ExprStmt <$> (optionMaybe expr) `endedBy` semi
+                   , Jump <$> jump
                    ]
 
 functionBody :: GenParser st Body
@@ -281,55 +284,64 @@ jump = choice [ keyword "goto" >> Goto <$> identifier
               , keyword "return" >> Return <$> (optionMaybe expr)
               ] `endedBy` semi
 
-int32 :: GenParser st Int32
-int32 = do
-  ds <- many1 digit
-  spaces
-  case ds of
-    ""  -> fail "integer"
-    dds -> return (read ds :: Int32)
-
-int64 :: GenParser st Int64
-int64 = do
-  ds <- many1 digit
-  suf <- oneOf "Ll"
-  spaces
-  case ds of
-    ""  -> fail "integer"
-    dds -> return (read ds :: Int64)
-
-float32 :: GenParser st Float
-float32 = do
-  ds <- many1 digit
-  _ <- char '.'
-  dds <- many1 digit
-  suf <- char 'f'
-  spaces
-  return (read (ds ++ "." ++ dds) :: Float)
-
-float64 :: GenParser st Double
-float64 = do
-  ds <- many1 digit
-  _ <- char '.'
-  dds <- many1 digit
-  spaces
-  return (read (ds ++ "." ++ dds) :: Double)
-
 charLit :: GenParser st Char
-charLit = between (char '\'') (char '\'') anyChar
+charLit = between (char '\'') (char '\'' >> spaces) anyChar
+
+decimal :: GenParser st String
+decimal = do
+  sg <- option "" (string "-")
+  ds <- many1 digit
+  _  <- char '.'
+  ts <- many1 digit
+  return (sg ++ ds ++ "." ++ ts)
+
+floatSci :: GenParser st Literal
+floatSci = do
+  dec <- decimal
+  e <- oneOf "Ee"
+  s <- option "" (string "-")
+  ds <- many1 digit
+  su <- optionMaybe (oneOf "Ff")
+  let val = dec ++ (e:s) ++ ds
+  case su of
+    Just _  -> return (Float32Lit (read val :: Float))
+    Nothing -> return (Float64Lit (read val :: Double))
+
+float :: GenParser st Literal
+float = do
+  dec <- decimal
+  su <- optionMaybe (oneOf "Ff")
+  spaces
+  case su of
+    Just _  -> return (Float32Lit (read dec :: Float))
+    Nothing -> return (Float64Lit (read dec :: Double))
+
+int :: GenParser st Literal
+int = do
+  sg <- optionMaybe (char '-')
+  ds <- many1 digit
+  su <- optionMaybe (oneOf "Ll")
+  spaces
+  case su of
+    Just _  -> case sg of
+      Just _  -> return (Int64Lit (-(read ds :: Int64)))
+      Nothing -> return (Int64Lit (read ds :: Int64))
+    Nothing -> case sg of
+      Just _  -> return (Int32Lit (-(read ds :: Int32)))
+      Nothing -> return (Int32Lit (read ds :: Int32))
 
 literal :: GenParser st Literal
-literal = (try $ Float32Lit <$> float32) <|>
-          (try $ Float64Lit <$> float64) <|>
-          (try $ Int64Lit <$> int64) <|>
-          (Int32Lit <$> int32) <|>
+literal = (try floatSci) <|> (try float) <|> (try int) <|>
           (CharLit <$> charLit) <?> "literal"
 
 postfixExpr :: GenParser st Expr
-postfixExpr =
-  (try $ (PostfixInc <$> primExpr) `endedBy` (string "++")) <|>
-  (try $ (PostfixDec <$> primExpr) `endedBy` (string "--")) <|>
-  primExpr
+postfixExpr = do
+  e <- primExpr
+  s <- optionMaybe (try (string "++" <|> string "--"))
+  case s of
+    Nothing -> return e
+    Just "++" -> return (PostfixInc e)
+    Just "--" -> return (PostfixDec e)
 
 primExpr :: GenParser st Expr
 primExpr = (between lparen rparen expr) <|>
@@ -354,82 +366,165 @@ expr :: GenParser st Expr
 expr = assignExpr
 
 condExpr :: GenParser st Expr
-condExpr =
-  (try (CondExpr <$> orExpr <*> (symbol "?" >> expr)
-                            <*> (symbol ":" >> condExpr))) <|>
-  orExpr
+condExpr = do
+  e <- orExpr
+  spaces
+  s <- optionMaybe (try (symbol "?"))
+  case s of
+    Nothing -> return e
+    Just _  -> do
+      e1 <- expr
+      _  <- symbol ":"
+      e2 <- condExpr
+      return (CondExpr e e1 e2)
 
 orExpr :: GenParser st Expr
-orExpr =
-  (try (Or <$> andExpr <*> (symbol "||" >> orExpr))) <|>
-  andExpr
+orExpr = do
+  e <- andExpr
+  s <- optionMaybe (try (symbol "||"))
+  spaces
+  case s of
+    Nothing -> return e
+    Just _  -> do
+      e1 <- orExpr
+      return (Or e e1)
 
 andExpr :: GenParser st Expr
-andExpr =
-  (try (And <$> bwOrExpr <*> (symbol "&&" >> andExpr))) <|>
-  bwOrExpr
+andExpr = do
+  e <- bwOrExpr
+  s <- optionMaybe (try (symbol "&&"))
+  spaces
+  case s of
+    Nothing -> return e
+    Just _  -> do
+      e1 <- andExpr
+      return (And e e1)
 
 bwOrExpr :: GenParser st Expr
-bwOrExpr =
-  (try (BitwiseOr <$> xorExpr <*> (symbol "|" >> bwOrExpr))) <|>
-  xorExpr
+bwOrExpr = do
+  e <- xorExpr
+  s <- optionMaybe (try $ symbol "|")
+  spaces
+  case s of
+    Nothing -> return e
+    Just _  -> do
+      e1 <- bwOrExpr
+      return (BitwiseOr e e1)
 
 xorExpr :: GenParser st Expr
-xorExpr =
-  (try (Xor <$> bwAndExpr <*> (symbol "^" >> xorExpr))) <|>
-  bwAndExpr
+xorExpr = do
+  e <- bwAndExpr
+  s <- optionMaybe (try $ symbol "^")
+  spaces
+  case s of
+    Nothing -> return e
+    Just _  -> do
+      e1 <- xorExpr
+      return (Xor e e1)
 
 bwAndExpr :: GenParser st Expr
-bwAndExpr =
-  (try (BitwiseAnd <$> equalExpr <*> (symbol "&" >> bwAndExpr))) <|>
-  equalExpr
+bwAndExpr = do
+  e <- equalExpr
+  s <- optionMaybe (try $ symbol "&")
+  spaces
+  case s of
+    Nothing -> return e
+    Just _  -> do
+      e1 <- bwAndExpr
+      return (BitwiseAnd e e1)
 
 equalExpr :: GenParser st Expr
-equalExpr =
-  (try (EqExpr <$> relat <*> (symbol "==" >> equalExpr))) <|>
-  (try (NeqExpr <$> relat <*> (symbol "!=" >> equalExpr))) <|>
-  relat
+equalExpr = do
+  e <- relat
+  spaces
+  s <- optionMaybe (try (string "==" <|> string "!="))
+  spaces
+  case s of
+    Nothing -> return e
+    Just "=="  -> EqExpr e <$> equalExpr
+    Just "!="  -> NeqExpr e <$> equalExpr
 
 relat :: GenParser st Expr
-relat =
-  (try (Lt <$> shift <*> (symbol "<" >> relat))) <|>
-  (try (Gt <$> shift <*> (symbol ">" >> relat))) <|>
-  (try (LtEq <$> shift <*> (symbol "<=" >> relat))) <|>
-  (try (GtEq <$> shift <*> (symbol ">=" >> relat))) <|>
-  shift
+relat = do
+  e <- shift
+  spaces
+  s <- optionMaybe (try (string "<=" <|> string ">=" <|> string "<" <|> string ">"))
+  spaces
+  case s of
+    Nothing -> return e
+    Just "<"  -> Lt e <$> relat
+    Just ">"  -> Gt e <$> relat
+    Just ">=" -> GtEq e <$> relat
+    Just "<=" -> LtEq e <$> relat
 
 shift :: GenParser st Expr
-shift =
-  (try (ShiftL <$> add <*> (symbol "<<" >> shift))) <|>
-  (try (ShiftR <$> add <*> (symbol ">>" >> shift))) <|>
-  add
+shift = do
+  e <- add
+  spaces
+  s <- optionMaybe (try (string "<<" <|> string ">>"))
+  spaces
+  case s of
+    Nothing -> return e
+    Just "<<" -> ShiftL e <$> shift
+    Just ">>" -> ShiftR e <$> shift
 
 add :: GenParser st Expr
-add =
-  (try (AddExpr <$> mul <*> (symbol "+" >> add))) <|>
-  (try (SubExpr <$> mul <*> (symbol "-" >> add))) <|>
-  mul
+add = do
+  e <- mul
+  spaces
+  s <- optionMaybe (try (string "+" <|> string "-"))
+  spaces
+  case s of
+    Nothing -> return e
+    Just "+" -> AddExpr e <$> add
+    Just "-" -> SubExpr e <$> add
 
 mul :: GenParser st Expr
-mul =
-  (try (MulExpr <$> castExpr <*> (symbol "*" >> mul))) <|>
-  (try (DivExpr <$> castExpr <*> (symbol "/" >> mul))) <|>
-  (try (ModExpr <$> castExpr <*> (symbol "%" >> mul))) <|>
-  castExpr
+mul = do
+  e <- castExpr
+  spaces
+  s <- optionMaybe (try (string "*" <|> string "/" <|> string "%"))
+  spaces
+  case s of
+    Nothing -> return e
+    Just "*" -> MulExpr e <$> mul
+    Just "/" -> DivExpr e <$> mul
+    Just "%" -> ModExpr e <$> mul
 
+-- FIXME
 castExpr = unaryExpr
 
 unaryExpr :: GenParser st Expr
 unaryExpr =
-  postfixExpr <|>
-  (try (PrefixInc <$> (symbol "++" >> unaryExpr))) <|>
-  (try (PrefixDec <$> (symbol "--" >> unaryExpr))) <|>
-  (symbol "-" >> Neg <$> castExpr) <|>
-  (symbol "+" >> Plus <$> castExpr) <|>
-  (symbol "&" >> AddrOf <$> castExpr) <|>
-  (symbol "*" >> Deref <$> castExpr) <|>
-  (symbol "!" >> Not <$> castExpr) <|>
-  (symbol "~" >> Compl <$> castExpr) <?> "unary expression"
+  (try postfixExpr) <|>
+  (try unaryPostfix) <|>
+  (try unaryPrefix)
+
+unaryPostfix :: GenParser st Expr
+unaryPostfix = do
+  s <- string "++" <|> string "--"
+  e <- unaryExpr
+  case s of
+    "++" -> return (PrefixInc e)
+    "--" -> return (PrefixDec e)
+
+unaryPrefix :: GenParser st Expr
+unaryPrefix = do
+  s <- oneOf "-+&*!~"
+  e <- castExpr
+  case s of
+    '-' ->
+      case e of
+        (PrimC (Float32Lit n)) -> return (PrimC (Float32Lit (-n)))
+        (PrimC (Float64Lit n)) -> return (PrimC (Float64Lit (-n)))
+        (PrimC (Int32Lit n))   -> return (PrimC (Int32Lit (-n)))
+        (PrimC (Int64Lit n))   -> return (PrimC (Int64Lit (-n)))
+        _                      -> return (Neg e)
+    '+' -> return (Plus e)
+    '&' -> return (AddrOf e)
+    '*' -> return (Deref e)
+    '!' -> return (Not e)
+    '~' -> return (Compl e)
 
 assignExpr :: GenParser st Expr
 assignExpr = (try (Assign <$> unaryExpr <*> op <*> condExpr)) <|> condExpr
