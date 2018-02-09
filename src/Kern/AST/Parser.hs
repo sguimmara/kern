@@ -7,6 +7,7 @@ import           Kern.AST
 
 import           Data.Int
 import           Data.Either
+import           Data.Maybe       (isNothing)
 import           Data.List
 import           Data.Text        (pack)
 import           Text.Parsec
@@ -448,14 +449,18 @@ relat :: GenParser st Expr
 relat = do
   e <- shift
   spaces
-  s <- optionMaybe (try (string "<=" <|> string ">=" <|> string "<" <|> string ">"))
-  spaces
-  case s of
-    Nothing -> return e
-    Just "<"  -> Lt e <$> relat
-    Just ">"  -> Gt e <$> relat
-    Just ">=" -> GtEq e <$> relat
-    Just "<=" -> LtEq e <$> relat
+  x <- optionMaybe $ try (char '<' <|> char '>')
+  if isNothing x
+    then return e
+    else do
+      xx <- optionMaybe $ try (char '=')
+      spaces
+      let sym = (x:xx:[])
+      case sym of
+        (Just '>':Nothing:[]) -> Gt e <$> relat
+        (Just '<':Nothing:[]) -> Lt e <$> relat
+        (Just '<':Just '=':[]) -> LtEq e <$> relat
+        (Just '>':Just '=':[]) -> GtEq e <$> relat
 
 shift :: GenParser st Expr
 shift = do
@@ -472,24 +477,24 @@ add :: GenParser st Expr
 add = do
   e <- mul
   spaces
-  s <- optionMaybe (try (string "+" <|> string "-"))
+  s <- optionMaybe (try (char '+' <|> char '-'))
   spaces
   case s of
     Nothing -> return e
-    Just "+" -> AddExpr e <$> add
-    Just "-" -> SubExpr e <$> add
+    Just '+' -> AddExpr e <$> add
+    Just '-' -> SubExpr e <$> add
 
 mul :: GenParser st Expr
 mul = do
   e <- castExpr
   spaces
-  s <- optionMaybe (try (string "*" <|> string "/" <|> string "%"))
+  s <- optionMaybe $ try $ oneOf "*/%"
   spaces
   case s of
     Nothing -> return e
-    Just "*" -> MulExpr e <$> mul
-    Just "/" -> DivExpr e <$> mul
-    Just "%" -> ModExpr e <$> mul
+    Just '*' -> MulExpr e <$> mul
+    Just '/' -> DivExpr e <$> mul
+    Just '%' -> ModExpr e <$> mul
 
 -- FIXME
 castExpr = unaryExpr

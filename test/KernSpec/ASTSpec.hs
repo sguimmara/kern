@@ -47,9 +47,16 @@ instance Arbitrary Expr where
                     , aAddExpr
                     , aShiftExpr
                     , aUnaryExpr
+                    , aRelatExpr
+                    , aEqualExpr
+                    , aBwAndExpr
+                    , aBwOrExpr
+                    , aXorExpr
+                    , aOrExpr
+                    , aAddExpr
                     ]
   shrink (PrimC _) = []
-  shrink (PrimI _) = []
+  shrink (PrimI (Ident i)) = [PrimI (Ident (T.init i))]
   shrink (Neg e) = [e]
   shrink (Plus e) = [e]
   shrink (Not e) = [e]
@@ -81,8 +88,40 @@ instance Arbitrary Expr where
   shrink (CondExpr a b c) = [a, b, c]
   shrink (Assign lh _ rh) = [lh, rh]
 
+aOrExpr :: Gen Expr
+aOrExpr = oneof [ aAndExpr
+                 , Or <$> aAndExpr <*> aOrExpr ]
+
+aAndExpr :: Gen Expr
+aAndExpr = oneof [ aBwOrExpr
+                 , And <$> aBwOrExpr <*> aAndExpr ]
+
+aBwOrExpr :: Gen Expr
+aBwOrExpr = oneof [ aXorExpr
+                  , BitwiseOr <$> aXorExpr <*> aBwOrExpr ]
+
+aXorExpr :: Gen Expr
+aXorExpr = oneof [ aBwAndExpr
+                 , Xor <$> aBwAndExpr <*> aXorExpr ]
+
+
+aBwAndExpr :: Gen Expr
+aBwAndExpr = oneof [ aEqualExpr
+                   , BitwiseAnd <$> aEqualExpr <*> aBwAndExpr ]
+
+aEqualExpr :: Gen Expr
+aEqualExpr = oneof [ aRelatExpr
+                   , EqExpr <$> aRelatExpr <*> aEqualExpr
+                   , NeqExpr <$> aRelatExpr <*> aEqualExpr
+                   ]
+
 aRelatExpr :: Gen Expr
-aRelatExpr = oneof [ ]
+aRelatExpr = oneof [ aShiftExpr
+                   , Lt <$> aShiftExpr <*> aRelatExpr
+                   , Gt <$> aShiftExpr <*> aRelatExpr
+                   , LtEq <$> aShiftExpr <*> aRelatExpr
+                   , GtEq <$> aShiftExpr <*> aRelatExpr
+                   ]
 
 aShiftExpr :: Gen Expr
 aShiftExpr = oneof [ aAddExpr
@@ -115,7 +154,7 @@ aUnaryExpr = oneof [ PostfixInc <$> aPrimExpr
                    , PostfixDec <$> aPrimExpr
                    , PrefixInc <$> aPrimExpr
                    , PrefixDec <$> aPrimExpr
-                   , Neg <$> aCastExpr
+                   , Neg <$> (PrimI <$> arbitrary)
                    , Plus <$> aCastExpr
                    , Not <$> aCastExpr
                    , AddrOf <$> aCastExpr
@@ -126,6 +165,7 @@ aUnaryExpr = oneof [ PostfixInc <$> aPrimExpr
 instance Arbitrary Statement where
   arbitrary = oneof [ Jump <$> arbitrary
                     , ExprStmt <$> arbitrary ]
+  shrink (ExprStmt Nothing) = []
   shrink (ExprStmt (Just e)) = let ss = shrink e
                                    f x = ExprStmt (Just x) in
                                    map f ss
@@ -147,9 +187,9 @@ spec = do
     modifyMaxSuccess (const 250) $
     it "roundtrip" $ property (prop_parse_pretty jump)
   describe "expressions" $
-    modifyMaxSuccess (const 1000) $
+    modifyMaxSuccess (const 250) $
     it "roundtrip" $ property (prop_parse_pretty expr)
   describe "statements" $
-    modifyMaxSuccess (const 1000) $
+    modifyMaxSuccess (const 250) $
     it "roundtrip" $ property (prop_parse_pretty statement)
 
