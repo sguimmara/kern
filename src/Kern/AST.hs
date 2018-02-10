@@ -143,6 +143,30 @@ instance ToJSON LocalVariable where
            , ("initializer", toJSON ini)
            ]
 
+data Type = Type DataType Linkage Constness Volatility
+            deriving (Eq, Show)
+
+instance ToJSON Type where
+  toJSON (Type dt l c v) =
+    object [ ("linkage", toJSON l)
+           , ("constness", toJSON c)
+           , ("volatility", toJSON v)
+           , ("datatype", toJSON dt)
+           ]
+
+data GlobalVar = GlobalVar Identifier Type (Maybe Initializer)
+                 deriving (Eq, Show)
+
+instance ToJSON GlobalVar where
+  toJSON (GlobalVar ident ty ini) =
+    object [ ("type", toJSON ty)
+           , ("id", toJSON ident)
+           , ("initializer", toJSON ini)
+           ]
+
+data LocalVar = LocalVar Identifier Type (Maybe Initializer)
+                deriving (Eq, Show)
+
 data FunctionPrototype = Prototype ExternalType Identifier Params
                          deriving (Eq, Show)
 
@@ -337,10 +361,30 @@ instance ToJSON TranslationUnit where
   toJSON (TranslationUnit decls) =
     object [ ("translation-unit", array $ fmap toJSON decls) ]
 
+data Declarator = Declarator (Maybe Pointer) DirectDeclarator
+                  deriving (Eq, Show)
+
+data DirectDeclarator = DeclIdentifier Identifier
+                      | DeclParenthese Declarator
+                      | DeclArray      DirectDeclarator (Maybe Expr)
+                      | DeclParams     DirectDeclarator [Parameter]
+                        deriving (Eq, Show)
+
+data InitDeclarator = InitDeclarator Declarator (Maybe Initializer)
+                      deriving (Eq, Show)
+
+data Declaration = Declaration [DeclarationSpecifier] [InitDeclarator]
+                   deriving (Eq, Show)
+
 data ExternalDeclaration
   = FunctionDefinition FunctionDefinition
+  | GlobalDeclaration GlobalVar
   deriving (Eq, Show)
 
 instance ToJSON ExternalDeclaration where
   toJSON (FunctionDefinition fd) =
     object [ ("function-definition", toJSON fd) ]
+  toJSON (GlobalDeclaration g) =
+    object [ ("global-variable", toJSON g) ]
+  -- toJSON (FunctionPrototype fp) =
+  --   object [ ("function-declaration", toJSON fp) ]

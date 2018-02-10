@@ -7,7 +7,7 @@ import           Kern.AST
 
 import           Data.Int
 import           Data.Either
-import           Data.Maybe       (isNothing)
+import           Data.Maybe       (isNothing, isJust, mapMaybe)
 import           Data.List
 import           Data.Text        (pack)
 import           Text.Parsec
@@ -145,25 +145,25 @@ identifier = try $ do
   if res `elem` keywords then fail ""
   else return $ Ident (pack res)
 
-getFuncLinkage :: [StorageClass] -> Either String Linkage
-getFuncLinkage [] = Right External
-getFuncLinkage [Extern] = Right External
-getFuncLinkage [Static] = Right Internal
-getFuncLinkage [Register] =
+linkage :: [StorageClass] -> Either String Linkage
+linkage [] = Right External
+linkage [Extern] = Right External
+linkage [Static] = Right Internal
+linkage [Register] =
   Left $ "'register' storage class not allowed for function definitions"
-getFuncLinkage [Typedef] =
+linkage [Typedef] =
   Left $ "function definition declared 'typedef'"
-getFuncLinkage [Auto] =
+linkage [Auto] =
   Left $ "function definition declared 'auto'"
 
-getFuncQualifiers :: [TypeQualifier] -> (Constness, Volatility)
-getFuncQualifiers [] = (Mutable, NonVolatile)
-getFuncQualifiers xs = (m, v) where
+typeQualifiers :: [TypeQualifier] -> (Constness, Volatility)
+typeQualifiers [] = (Mutable, NonVolatile)
+typeQualifiers xs = (m, v) where
   m    = if ConstQualifier `elem` xs then Constant else Mutable
   v    = if VolatileQualifier `elem` xs then Volatile else NonVolatile
 
-returnType :: GenParser st ExternalType
-returnType = do
+externalType :: GenParser st ExternalType
+externalType = do
   decls <- many declarationSpecifier
   ptr <- optionMaybe pointer
   let (sto, spec, quals) = separateDeclSpecs decls
@@ -177,8 +177,8 @@ returnType = do
   else if Auto `elem` sto then err1 "auto"
   else do
     let dt = dataType spec
-        sc = getFuncLinkage sto
-        (cnst, vol) = getFuncQualifiers quals
+        sc = linkage sto
+        (cnst, vol) = typeQualifiers quals
     case dt of
       (Left err) -> fail err
       (Right dt') -> case sc of
@@ -197,7 +197,7 @@ paramType = do
   if (not . null) sto then fail "storage class specifier for parameter"
   else do
     let dt = dataType spec
-        (cnst, vol) = getFuncQualifiers quals
+        (cnst, vol) = typeQualifiers quals
     case dt of
       (Left err) -> fail err
       (Right dt') -> return $ ParameterType dt' cnst vol ind
@@ -212,15 +212,18 @@ internalType = do
               Just p -> Indirect p
 
   let dt = dataType spec
-      (cnst, vol) = getFuncQualifiers quals
+      (cnst, vol) = typeQualifiers quals
   case dt of
     (Left err) -> fail err
     (Right dt') -> return $ InternalType dt' cnst vol ind
 
 semi = char ';' >> spaces
 
-lbracket = char '{' >> spaces :: GenParser st ()
-rbracket = char '}' >> spaces :: GenParser st ()
+lbrace = char '{' >> spaces :: GenParser st ()
+rbrace = char '}' >> spaces :: GenParser st ()
+
+lbracket = char '[' >> spaces :: GenParser st ()
+rbracket = char ']' >> spaces :: GenParser st ()
 
 lparen = char '(' >> spaces :: GenParser st ()
 rparen = char ')' >> spaces :: GenParser st ()
@@ -238,16 +241,93 @@ param = Parameter <$> paramType <*> identifier
 
 endedBy p e = p >>= \r -> e >> return r
 
+foo :: Declaration -> Either String [(Identifier, Type)]
+foo d = do
+  let is = getIdentifiers d
+  t <- getType d
+  return $ zip is (repeat t)
+
+getIdentifiers :: Declaration -> [Identifier]
+getIdentifiers (Declaration _ []) = []
+getIdentifiers (Declaration _ xs) = map f xs
+  where f (InitDeclarator d _) = g d
+        g (Declarator _ dd) = h dd
+        h (DeclIdentifier i) = i
+        h (DeclParenthese d') = g d'
+        h (DeclArray dd' _) = h dd'
+        h (DeclParams dd' _) = h dd'
+
+extractTypeQualifiers :: [DeclarationSpecifier] -> [TypeQualifier]
+extractTypeQualifiers =
+  mapMaybe (\x -> case x of
+                    TypeQualifier x -> Just x
+                    _               -> Nothing)
+
+extractTypeSpecifiers :: [DeclarationSpecifier] -> [TypeSpecifier]
+extractTypeSpecifiers =
+  mapMaybe (\x -> case x of
+                    TypeSpecifier x -> Just x
+                    _               -> Nothing)
+
+extractStorageClasses :: [DeclarationSpecifier] -> [StorageClass]
+extractStorageClasses =
+  mapMaybe (\x -> case x of
+                    StorageClass x -> Just x
+                    _              -> Nothing)
+
+getType :: Declaration -> Either String Type
+getType (Declaration ss is) = do
+  dt <- dataType  $ extractTypeSpecifiers ss
+  ln <- linkage   $ extractStorageClasses ss
+  let (c, v) = typeQualifiers $ extractTypeQualifiers ss
+  return (Type dt ln c v)
+
+declarator :: GenParser st Declarator
+declarator = Declarator <$> (optionMaybe pointer) <*> directDeclarator
+
+directDeclarator :: GenParser st DirectDeclarator
+directDeclarator = do
+  dd <- (DeclParenthese <$> (between lparen rparen declarator)) <|>
+        (DeclIdentifier <$> identifier)
+  spaces
+  choice [ try $ DeclArray dd <$> (between lbracket rbracket (optionMaybe condExpr))
+         , try $ DeclParams dd <$> paramList
+         , return dd ]
+
+initDeclarator :: GenParser st InitDeclarator
+initDeclarator = InitDeclarator <$> declarator <*> (optionMaybe initializer)
+
+declaration :: GenParser st Declaration
+declaration =
+  (Declaration <$> many1 declarationSpecifier <*> many initDeclarator)
+  `endedBy` semi
+
 paramList :: GenParser st Params
 paramList = between lparen rparen (commaSep param)
 
-initializer = symbol "=" >> InitExpr <$> expr
+initializer = symbol "=" >> spaces >> InitExpr <$> expr
 
-extDeclaration :: GenParser st ExternalDeclaration
-extDeclaration = choice [ FunctionDefinition <$> functionDefinition ]
+externalDeclaration :: GenParser st [ExternalDeclaration]
+externalDeclaration = do
+  fd <- optionMaybe $ try $ FunctionDefinition <$> functionDefinition
+  case fd of
+    Just x -> return [x]
+    Nothing -> do
+      v <- globalVars
+      return (map GlobalDeclaration v)
+
+globalVars :: GenParser st [GlobalVar]
+globalVars = do
+  d <- declaration
+  let ds = foo d
+  case ds of
+    Left e -> unexpected e
+    Right ok -> return $ map (\(i, t) -> GlobalVar i t Nothing) ok
 
 translationUnit :: GenParser st TranslationUnit
-translationUnit = TranslationUnit <$> (many extDeclaration)
+translationUnit = do
+  decls <- many externalDeclaration
+  return $ TranslationUnit (concat decls)
 
 localDeclaration :: GenParser st LocalVariable
 localDeclaration = try ((LocalVariable <$> internalType <*> identifier <*>
@@ -260,23 +340,28 @@ statement = choice [ ExprStmt <$> (optionMaybe expr) `endedBy` semi
 
 functionBody :: GenParser st Body
 functionBody =
-  between lbracket rbracket
+  between lbrace rbrace
           (Body <$> (many localDeclaration) <*> (many statement))
 
 functionDefinition :: GenParser st FunctionDefinition
-functionDefinition = Function <$> returnType
+functionDefinition = Function <$> externalType
                               <*> identifier
                               <*> paramList
                               <*> functionBody
 
 functionPrototype :: GenParser st FunctionPrototype
 functionPrototype =
-  (Prototype <$> returnType <*> identifier <*> paramList) `endedBy` semi
+  (Prototype <$> externalType <*> identifier <*> paramList) `endedBy` semi
   <?> "function prototype"
 
 pointer :: GenParser st Pointer
-pointer = char '*' >> spaces >> many typeQualifier >>
-          Pointer <$> (optionMaybe pointer)
+pointer = do
+  char '*'
+  spaces
+  many typeQualifier
+  p <- (optionMaybe pointer)
+  spaces
+  return (Pointer p)
 
 jump :: GenParser st Jump
 jump = choice [ keyword "goto" >> Goto <$> identifier
@@ -339,6 +424,7 @@ postfixExpr :: GenParser st Expr
 postfixExpr = do
   e <- primExpr
   s <- optionMaybe (try (string "++" <|> string "--"))
+  spaces
   case s of
     Nothing -> return e
     Just "++" -> return (PostfixInc e)
@@ -350,17 +436,17 @@ primExpr = (between lparen rparen expr) <|>
            (PrimC <$> literal)
 
 op :: GenParser st Op
-op = choice [ symbol "=" >> return Equal
-            , symbol "*=" >> return MulEq
-            , symbol "/=" >> return DivEq
-            , symbol "%=" >> return ModEq
-            , symbol "+=" >> return AddEq
-            , symbol "-=" >> return SubEq
-            , symbol "<<=" >> return ShLEq
-            , symbol ">>=" >> return ShREq
-            , symbol "&=" >> return AndEq
-            , symbol "^=" >> return XorEq
-            , symbol "|=" >> return OrEq
+op = choice [ symbol "=" >> spaces >> return Equal
+            , symbol "*=" >> spaces >> return MulEq
+            , symbol "/=" >> spaces >> return DivEq
+            , symbol "%=" >> spaces >> return ModEq
+            , symbol "+=" >> spaces >> return AddEq
+            , symbol "-=" >> spaces >> return SubEq
+            , symbol "<<=" >> spaces >> return ShLEq
+            , symbol ">>=" >> spaces >> return ShREq
+            , symbol "&=" >> spaces >> return AndEq
+            , symbol "^=" >> spaces >> return XorEq
+            , symbol "|=" >> spaces >> return OrEq
             ]
 
 expr :: GenParser st Expr
@@ -509,6 +595,7 @@ unaryPostfix :: GenParser st Expr
 unaryPostfix = do
   s <- string "++" <|> string "--"
   e <- unaryExpr
+  spaces
   case s of
     "++" -> return (PrefixInc e)
     "--" -> return (PrefixDec e)
@@ -517,6 +604,7 @@ unaryPrefix :: GenParser st Expr
 unaryPrefix = do
   s <- oneOf "-+&*!~"
   e <- castExpr
+  spaces
   case s of
     '-' ->
       case e of

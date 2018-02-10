@@ -91,6 +91,14 @@ instance Pretty LocalVariable where
   pretty (LocalVariable ty i (Just ini)) =
     pretty ty <+> pretty i <+> char '=' <+> pretty ini <> semi
 
+instance Pretty Type where
+  pretty (Type d l c v) = pretty c <+> pretty v <+> pretty l <+> pretty d
+
+instance Pretty GlobalVar where
+  pretty (GlobalVar i ty Nothing)    = pretty ty <+> pretty i <> semi
+  pretty (GlobalVar i ty (Just ini)) =
+    pretty ty <+> pretty i <+> char '=' <+> pretty ini <> semi
+
 instance Pretty FunctionPrototype where
   pretty (Prototype ty i ps) =
     pretty ty <+> pretty i <>
@@ -108,6 +116,14 @@ instance Pretty FunctionDefinition where
     nest 4 (vcat $ map pretty (bodyLocals b)) $+$
     nest 4 (vcat $ map pretty (bodyStmts b)) $+$
     rbrace
+
+instance Pretty ExternalDeclaration where
+  pretty (FunctionDefinition f) = pretty f
+  pretty (GlobalDeclaration d) = pretty d
+
+instance Pretty TranslationUnit where
+  pretty (TranslationUnit decls) =
+    vcat (map pretty decls)
 
 instance Pretty Statement where
   pretty (Jump j)            = pretty j

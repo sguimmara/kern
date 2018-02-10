@@ -5,6 +5,7 @@ import           Data.Int
 import           Data.Functor.Identity
 import qualified Data.Text as T
 import qualified Text.Parsec as P
+import           Control.Monad
 
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
@@ -23,6 +24,33 @@ ident = do
   idenH <- elements (['a'..'z'] ++ ['A'..'Z'] ++ "_")
   idenT <- sublistOf(['0'..'9'] ++ ['a'..'z'] ++ ['A'..'Z'] ++ "_")
   return $ T.pack (idenH:idenT)
+
+instance Arbitrary DataType where
+  arbitrary = elements [ TyVoid, TyByte
+                       , TyInt16, TyInt32, TyInt64
+                       , TyUint16, TyUint32, TyUint64
+                       , TyFloat32, TyFloat64
+                       ]
+
+instance Arbitrary Constness where
+  arbitrary = elements [ Constant, Mutable ]
+
+instance Arbitrary Volatility where
+  arbitrary = elements [ Volatile, NonVolatile ]
+
+instance Arbitrary Linkage where
+  arbitrary = elements [ External, Internal ]
+
+instance Arbitrary Indirection where
+  arbitrary = oneof [ return Direct
+                    , Indirect <$> arbitrary ]
+
+instance Arbitrary Pointer where
+  arbitrary = oneof [ return (Pointer Nothing)
+                    , Pointer <$> arbitrary ]
+
+instance Arbitrary Initializer where
+  arbitrary = InitExpr <$> arbitrary
 
 instance Arbitrary Literal where
   arbitrary = oneof [ Int32Lit <$> arbitrary
@@ -170,26 +198,69 @@ instance Arbitrary Statement where
                                    f x = ExprStmt (Just x) in
                                    map f ss
 
+instance Arbitrary Type where
+  arbitrary = Type <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary InternalType where
+  arbitrary =
+    InternalType <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary ExternalType where
+  arbitrary =
+    ExternalType <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary LocalVariable where
+  arbitrary = LocalVariable <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary GlobalVar where
+  arbitrary =
+   GlobalVar <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary ParameterType where
+  arbitrary =
+    ParameterType <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary Parameter where
+  arbitrary = Parameter <$> arbitrary <*> arbitrary
+
+instance Arbitrary FunctionPrototype where
+  arbitrary = Prototype <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary Body where
+  arbitrary = Body <$> arbitrary <*> arbitrary
+
+instance Arbitrary FunctionDefinition where
+  arbitrary = Function <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary ExternalDeclaration where
+  arbitrary = oneof [ FunctionDefinition <$> arbitrary
+                    , GlobalDeclaration <$> arbitrary ]
+
+instance Arbitrary TranslationUnit where
+  arbitrary = TranslationUnit <$> arbitrary
+  shrink (TranslationUnit ds) = [TranslationUnit [(head ds)], TranslationUnit (tail ds)]
+
 prop_parse_pretty :: (Eq a, Pretty a) => (P.Parsec T.Text () a) -> a -> Bool
 prop_parse_pretty p x =
   let ps = P.parse p "" (T.pack $ show $ pretty x) in
     ps == (Right x)
 
 spec :: Spec
-spec = do
-  describe "identifier" $
-    modifyMaxSuccess (const 100) $
+spec = parallel $ do
+  describe "identifiers" $
     it "roundtrip" $ property (prop_parse_pretty identifier)
   describe "literals" $
-    modifyMaxSuccess (const 250) $
     it "roundtrip" $ property (prop_parse_pretty literal)
-  describe "jump statement" $
-    modifyMaxSuccess (const 250) $
+  describe "jump statements" $
     it "roundtrip" $ property (prop_parse_pretty jump)
   describe "expressions" $
-    modifyMaxSuccess (const 250) $
     it "roundtrip" $ property (prop_parse_pretty expr)
   describe "statements" $
-    modifyMaxSuccess (const 250) $
     it "roundtrip" $ property (prop_parse_pretty statement)
-
+  describe "local variables" $
+    it "roundtrip" $ property (prop_parse_pretty localDeclaration)
+  describe "function prototypes" $
+    it "roundtrip" $ property (prop_parse_pretty functionPrototype)
+  describe "function definitions" $
+    modifyMaxSuccess (const 50) $
+    it "roundtrip" $ property (prop_parse_pretty functionDefinition)

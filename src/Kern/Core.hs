@@ -17,6 +17,7 @@ data DataType
   | TyUint64
   | TyFloat32
   | TyFloat64
+  | Array DataType
   deriving (Eq, Show)
 
 instance ToJSON DataType where
