@@ -33,13 +33,13 @@ instance Arbitrary DataType where
                        ]
 
 instance Arbitrary Constness where
-  arbitrary = elements [ Constant, Mutable ]
+  arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary Volatility where
-  arbitrary = elements [ Volatile, NonVolatile ]
+  arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary Linkage where
-  arbitrary = elements [ External, Internal ]
+  arbitrary = arbitraryBoundedEnum
 
 instance Arbitrary Indirection where
   arbitrary = oneof [ return Direct
@@ -82,6 +82,7 @@ instance Arbitrary Expr where
                     , aXorExpr
                     , aOrExpr
                     , aAddExpr
+                    , Assign <$> aUnaryExpr <*> arbitrary <*> arbitrary
                     ]
   shrink (PrimC _) = []
   shrink (PrimI (Ident i)) = [PrimI (Ident (T.init i))]
@@ -115,6 +116,9 @@ instance Arbitrary Expr where
   shrink (Or a b) = [a, b]
   shrink (CondExpr a b c) = [a, b, c]
   shrink (Assign lh _ rh) = [lh, rh]
+
+instance Arbitrary Op where
+  arbitrary = arbitraryBoundedEnum
 
 aOrExpr :: Gen Expr
 aOrExpr = oneof [ aAndExpr
@@ -231,6 +235,15 @@ instance Arbitrary Body where
 
 instance Arbitrary FunctionDefinition where
   arbitrary = Function <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (Function ty i ps (Body ls ss)) =
+    [ Function ty i ps (Body (lhalf ls) (lhalf ss))
+    , Function ty i ps (Body (rhalf ls) (rhalf ss)) ]
+
+lhalf :: [a] -> [a]
+lhalf x = drop (length x `div` 2) x
+
+rhalf :: [a] -> [a]
+rhalf x = take (length x `div` 2) x
 
 instance Arbitrary ExternalDeclaration where
   arbitrary = oneof [ FunctionDefinition <$> arbitrary
