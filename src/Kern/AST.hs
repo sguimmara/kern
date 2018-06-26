@@ -1,135 +1,130 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Kern.AST where
 
-import Data.Text as T
+import           Data.Int
+import           Data.Text
+import           Data.Char
 
-import Kern.Core
+data DataType
+  = TyVoid
+  | TyByte
+  | TyInt16
+  | TyInt32
+  | TyInt64
+  | TyUint16
+  | TyUint32
+  | TyUint64
+  | TyFloat32
+  | TyFloat64
+  deriving (Eq, Show, Enum, Bounded)
 
-data StorageClass
+data Literal
+  = StringLiteral StrLit
+  | NumLiteral NumLit
+  deriving (Eq, Show)
+
+data StrLit = StrLit !String
+  deriving (Eq, Show)
+
+data NumLit
+  = CChar !Char
+  | CFloat32 !Float
+  | CFloat64 !Double
+  | CInt64 !Int64
+  | CInt32 !Int32
+  deriving (Eq, Show)
+
+instance Num NumLit where
+  (+) (CChar c1) (CChar c2) = CChar  $ chr $ (ord c1) + (ord c2)
+
+  (+) (CInt64 a) (CInt64 b) = CInt64 $ a + b
+  (+) (CInt32 a) (CInt32 b) = CInt32 $ a + b
+  (+) (CInt64 a) (CInt32 b) = CInt64 $ a + fromIntegral b
+  (+) (CInt32 a) (CInt64 b) = CInt64 $ fromIntegral a + b
+
+  (+) (CFloat64 a) (CFloat64 b) = CFloat64 $ a + b
+  (+) (CFloat32 a) (CFloat32 b) = CFloat32 $ a + b
+  (+) (CFloat64 a) (CFloat32 b) = CFloat64 $ (realToFrac a) + (realToFrac b)
+  (+) (CFloat32 a) (CFloat64 b) = CFloat64 $ (realToFrac a) + (realToFrac b)
+
+
+data StorCls
   = Auto
   | Register
   | Static
   | Extern
   | Typedef
-  deriving (Eq, Show, Ord)
+  | DefaultStorage
+  deriving (Eq, Show, Enum, Bounded)
 
-data TypeQualifier
-  = ConstQualifier
-  | VolatileQualifier
-  deriving (Eq, Show, Ord)
-
-data TypeSpecifier
+data TypeSpec
   = SpecVoid
   | SpecChar
-  | SpecShort
   | SpecInt
   | SpecLong
+  | SpecShort
   | SpecFloat
   | SpecDouble
   | SpecSigned
   | SpecUnsigned
-  deriving (Eq, Show, Ord)
-
-data DeclarationSpecifier
-  = StorageClass StorageClass
-  | TypeSpecifier TypeSpecifier
-  | TypeQualifier TypeQualifier
+  | Struct (Maybe Identifier) [StructDecl]
+  | Union (Maybe Identifier) [StructDecl]
+  | SpecEnum (Maybe Identifier) [Enumerator]
+  | TypedefId Identifier
   deriving (Eq, Show)
 
-data Linkage
-  = External
-  | Internal
-  deriving (Eq, Show, Enum, Bounded)
+data TypeQual
+  = Const
+  | Volatile
+  deriving (Eq, Show, Enum, Bounded, Ord)
 
-data Constness
-  = Constant
-  | Mutable
-  deriving (Eq, Show, Enum, Bounded)
-
-data Volatility
-  = Volatile
-  | NonVolatile
-   deriving (Eq, Show, Enum, Bounded)
-
-data Indirection
-  = Direct
-  | Indirect Pointer
+newtype Identifier
+  = Id Text
   deriving (Eq, Show)
 
-data ExternalType =
-  ExternalType DataType
-               Linkage
-               Constness
-               Volatility
-               Indirection
+data StructDecl
+  = StructDecl DataType [TypeQual] [StructDecltor]
   deriving (Eq, Show)
 
-data InternalType =
-  InternalType DataType
-               Constness
-               Volatility
-               Indirection
+data StructDecltor
+  = StructDecltor Decltor
   deriving (Eq, Show)
 
-
-data ParameterType =
-  ParameterType DataType
-                Constness
-                Volatility
-                Indirection
+data Enumerator
+  = Enumerator Identifier
   deriving (Eq, Show)
 
-newtype Pointer = Pointer (Maybe Pointer)
-               deriving (Eq, Show)
+data Decltor
+  = Decltor (Maybe Pointer) DirectDecltor
+  deriving (Eq, Show)
 
-newtype Identifier = Ident Text deriving (Eq, Show)
+data Pointer
+  = Pointer [TypeQual] (Maybe Pointer)
+  deriving (Eq, Show)
 
-type Params = [Parameter]
-data Parameter = Parameter ParameterType Identifier deriving (Eq, Show)
+data DirectDecltor
+  = NameDecltor Identifier
+  | ArrayDecltor Identifier (Maybe Expr)
+  | FuncDecltor Identifier [ParamDecl]
+  deriving (Eq, Show)
+
+data Declaration
+  = Declaration DataType StorCls [TypeQual] [InitDecltor]
+  deriving (Eq, Show)
+
+data InitDecltor
+  = InitDecltor Decltor (Maybe Initializer)
+  deriving (Eq, Show)
 
 data Initializer
-  = InitExpr Expr
+  = Initializer
   deriving (Eq, Show)
 
-data LocalVariable =
-  LocalVariable InternalType Identifier (Maybe Initializer)
+data ParamDecl
+  = ParamDecl DataType StorCls [TypeQual] Decltor
   deriving (Eq, Show)
 
-data Type = Type DataType Linkage Constness Volatility
-            deriving (Eq, Show)
-
-data GlobalVar = GlobalVar Identifier Type (Maybe Initializer)
-                 deriving (Eq, Show)
-
-data LocalVar = LocalVar Identifier Type (Maybe Initializer)
-                deriving (Eq, Show)
-
-data FunctionPrototype = Prototype ExternalType Identifier Params
-                         deriving (Eq, Show)
-
-data Statement
-  = Jump Jump
-  | ExprStmt (Maybe Expr)
-  deriving (Eq, Show)
-
-data Body = Body { bodyLocals :: [LocalVariable]
-                 , bodyStmts :: [Statement]
-                 }
-            deriving (Eq, Show)
-
-instance ToJSON Body where
-  toJSON (Body vars stms) =
-    object [ ("local-vars", array $ fmap toJSON vars)
-           , ("statements", array $ fmap toJSON stms)
-           ]
-
-data FunctionDefinition =
-  Function { funcType :: ExternalType
-           , funcName :: Identifier
-           , funcParams :: Params
-           , funcBody :: Body
-           }
+data FunctionDefinition
+  = FuncDef DataType StorCls [TypeQual] Decltor CompoundStatement
   deriving (Eq, Show)
 
 data Expr
@@ -181,33 +176,17 @@ data Op
   | OrEq
   deriving (Eq, Show, Enum, Bounded)
 
-data Jump
+data CompoundStatement
+  = CompoundStmt [Declaration] [Statement]
+  deriving (Eq, Show)
+
+data Statement
   = Goto Identifier
   | Continue
   | Break
   | Return (Maybe Expr)
-  deriving (Eq, Show)
-
-newtype TranslationUnit =
-  TranslationUnit [ExternalDeclaration]
-  deriving (Eq, Show)
-
-data Declarator = Declarator (Maybe Pointer) DirectDeclarator
-                  deriving (Eq, Show)
-
-data DirectDeclarator = DeclIdentifier Identifier
-                      | DeclParenthese Declarator
-                      | DeclArray      DirectDeclarator (Maybe Expr)
-                      | DeclParams     DirectDeclarator [Parameter]
-                        deriving (Eq, Show)
-
-data InitDeclarator = InitDeclarator Declarator (Maybe Initializer)
-                      deriving (Eq, Show)
-
-data Declaration = Declaration [DeclarationSpecifier] [InitDeclarator]
-                   deriving (Eq, Show)
-
-data ExternalDeclaration
-  = FunctionDefinition FunctionDefinition
-  | GlobalDeclaration GlobalVar
+  | ExprStmt (Maybe Expr)
+  | Case Expr Statement
+  | DefaultStmt Statement
+  | LabelStmt Identifier Statement
   deriving (Eq, Show)

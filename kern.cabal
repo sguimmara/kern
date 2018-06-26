@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b36c0d949b3b931d1f9e1eba8b3059cad4e404a3d8391bd170d279f92f62e0a6
+-- hash: 9c034a9149fcff99e11dbe11a60fb62d882489aa9cc0f16d3a891c02b9254ada
 
 name:           kern
 version:        0.1.0.0
@@ -42,11 +42,20 @@ library
   exposed-modules:
       Kern.Arch.X64
       Kern.AST
+      Kern.AST.Analysis
       Kern.AST.Parser
+      Kern.AST.Parser.Declarations
+      Kern.AST.Parser.Expressions
+      Kern.AST.Parser.Literals
+      Kern.AST.Parser.Statements
+      Kern.AST.Parser.Utils
+      Kern.AST.ParserOld
       Kern.AST.Pretty
+      Kern.AST.Representation
+      Kern.ASTOld
       Kern.Bytecode
-      Kern.Core
       Kern.Formatting.ATandT
+      Kern.Optimizer
   other-modules:
       Paths_kern
   default-language: Haskell2010

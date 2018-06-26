@@ -4,5 +4,6 @@ import           Data.Maybe
 import           Data.Either
 import qualified Data.ByteString as BS
 import qualified Data.Vector as V
+import           Text.PrettyPrint.HughesPJClass (Pretty, pPrint)
 
 yaml x = BS.putStr $ encodePretty defConfig $ Y.toJSON x

@@ -2,185 +2,209 @@
 module Kern.AST.Pretty where
 
 import           Data.Char
-import qualified Data.Text as T hiding (map)
+import           Data.Maybe
+import           Data.List
+import qualified Data.Text as T
+
 import           Text.PrettyPrint
+import           Text.PrettyPrint.HughesPJClass (Pretty, pPrint)
 
-import Kern.Core
-import Kern.AST
-
-instance Pretty Identifier where
-  pretty (Ident t) = text $ T.unpack t
-
-instance Pretty Literal where
-  pretty (Int32Lit i32) = integer $ fromIntegral i32
-  pretty (Int64Lit i64) = (integer $ fromIntegral i64) <> char 'L'
-  pretty (CharLit c) = quotes (char c)
-  pretty (Float32Lit f32) = float f32 <> char 'f'
-  pretty (Float64Lit f64) = double f64
+import           Kern.AST
 
 instance Pretty DataType where
-  pretty dt =
-    case dt of
-      TyVoid -> text "void"
-      TyByte -> text "char"
-      TyInt16 -> text "short int"
-      TyInt32 -> text "int"
-      TyInt64 -> text "long int"
-      TyUint16 -> text "unsigned short int"
-      TyUint32 -> text "unsigned int"
-      TyUint64 -> text "unsigned long int"
-      TyFloat32 -> text "float"
-      TyFloat64 -> text "double"
+  pPrint TyVoid    = text "void"
+  pPrint TyByte    = text "char"
+  pPrint TyInt16   = text "short"
+  pPrint TyInt32   = text "int"
+  pPrint TyInt64   = text "long" <+> text "int"
+  pPrint TyUint16  = text "unsigned" <+> text "short"
+  pPrint TyUint32  = text "unsigned" <+> text "int"
+  pPrint TyUint64  = text "unsigned" <+> text "long"
+  pPrint TyFloat32 = text "float"
+  pPrint TyFloat64 = text "double"
 
-instance Pretty StorageClass where
-  pretty x = text $ map toLower (show x)
+instance Pretty Identifier where
+  pPrint (Id t) = text $ T.unpack t
 
-instance Pretty Volatility where
-  pretty Volatile = text "volatile"
-  pretty NonVolatile = empty
+instance Pretty Literal where
+  pPrint (CChar c)    = quotes (char c)
+  pPrint (CString s)  = doubleQuotes (text s)
+  pPrint (CInt32 n)   = integer $ fromIntegral n
+  pPrint (CInt64 n)   = (integer $ fromIntegral n) <> char 'L'
+  pPrint (CFloat32 n) = float n <> char 'f'
+  pPrint (CFloat64 n) = double n
 
-instance Pretty Linkage where
-  pretty External = empty
-  pretty Internal = text "static"
+instance Pretty StorCls where
+  pPrint DefaultStorage = empty
+  pPrint x = text $ map toLower (show x)
 
-instance Pretty Constness where
-  pretty Constant = text "const"
-  pretty Mutable  = empty
+instance Pretty TypeQual where
+  pPrint x = text $ map toLower (show x)
 
-instance Pretty Indirection where
-  pretty Direct = empty
-  pretty (Indirect p) = pretty p
+instance Pretty StructDecl where
+  pPrint (StructDecl dt qs decltors) =
+    (hsep $ map pPrint qs) <+> pPrint dt <+>
+    (hsep $ punctuate comma (map pPrint decltors))
+
+instance Pretty StructDecltor where
+  pPrint (StructDecltor d) = pPrint d
+
+instance Pretty Decltor where
+  pPrint (Decltor p dd) = (maybe empty pPrint p) <+> pPrint dd
 
 instance Pretty Pointer where
-  pretty (Pointer Nothing) = char '*'
-  pretty (Pointer (Just p)) = char '*' <> pretty p
+  pPrint (Pointer qs p) =
+    char '*' <+> (hsep $ map pPrint qs) <>
+    (maybe empty (\x -> space <> (pPrint x)) p)
 
-instance Pretty ExternalType where
-  pretty (ExternalType dt l c v i) =
-    hsep $
-      [ pretty c
-      , pretty v
-      , pretty l
-      , pretty dt
-      , pretty i]
+instance Pretty DirectDecltor where
+  pPrint (NameDecltor i) = pPrint i
+  pPrint (ArrayDecltor i e) =
+    pPrint i <> char '[' <> (maybe empty pPrint e) <> char ']'
+  pPrint (FuncDecltor i ps) =
+    pPrint i <> char '(' <>
+    (hsep $ punctuate comma (map pPrint ps)) <> char ')'
 
-instance Pretty InternalType where
-  pretty (InternalType dt c v i) =
-    hsep $
-      [ pretty c
-      , pretty v
-      , pretty dt
-      , pretty i]
+instance Pretty Declaration where
+  pPrint (Declaration dt sc qs is) =
+    pPrintQualifiers dt sc qs <+>
+    (hsep $ punctuate comma (map pPrint is)) <> semi
 
-instance Pretty ParameterType where
-  pretty (ParameterType dt c v i) =
-    hsep $
-      [ pretty c
-      , pretty v
-      , pretty dt
-      , pretty i]
+pPrintQualifiers dt sc qs =
+  (hsep $ map pPrint (sort qs)) <+>
+  pPrint sc <+>
+  pPrint dt
 
-instance Pretty Parameter where
-  pretty (Parameter ty i) = pretty ty <+> pretty i
+instance Pretty InitDecltor where
+  pPrint (InitDecltor d Nothing) = pPrint d
+  pPrint (InitDecltor d (Just x)) = error "unsupported"
 
-instance Pretty Initializer where
-  pretty (InitExpr expr) = pretty expr
-
-instance Pretty LocalVariable where
-  pretty (LocalVariable ty i Nothing)    = pretty ty <+> pretty i <> semi
-  pretty (LocalVariable ty i (Just ini)) =
-    pretty ty <+> pretty i <+> char '=' <+> pretty ini <> semi
-
-instance Pretty Type where
-  pretty (Type d l c v) = pretty c <+> pretty v <+> pretty l <+> pretty d
-
-instance Pretty GlobalVar where
-  pretty (GlobalVar i ty Nothing)    = pretty ty <+> pretty i <> semi
-  pretty (GlobalVar i ty (Just ini)) =
-    pretty ty <+> pretty i <+> char '=' <+> pretty ini <> semi
-
-instance Pretty FunctionPrototype where
-  pretty (Prototype ty i ps) =
-    pretty ty <+> pretty i <>
-    char '(' <>
-    (hsep (punctuate comma (map pretty ps))) <>
-    char ')' <> semi
+instance Pretty ParamDecl where
+  pPrint (ParamDecl dt sc qs d) = pPrintQualifiers dt sc qs <+> pPrint d
 
 instance Pretty FunctionDefinition where
-  pretty (Function ty i ps b) =
-    pretty ty <+> pretty i <>
-    char '(' <>
-    (hsep (punctuate comma(map pretty ps))) <>
-    char ')' $+$
+  pPrint (FuncDef dt sc qs d cs) =
+    pPrintQualifiers dt sc qs <+>
+    pPrint d <+> pPrint cs
+
+instance Pretty CompoundStatement where
+  pPrint (CompoundStmt ds ss) =
     lbrace $+$
-    nest 4 (vcat $ map pretty (bodyLocals b)) $+$
-    nest 4 (vcat $ map pretty (bodyStmts b)) $+$
+    nest 4 (vcat $ map pPrint ds) $+$
+    nest 4 (vcat $ map pPrint ss) $+$
     rbrace
 
-instance Pretty ExternalDeclaration where
-  pretty (FunctionDefinition f) = pretty f
-  pretty (GlobalDeclaration d) = pretty d
+-- instance Pretty Parameter where
+--   pretty (Parameter ty i) = pretty ty <+> pretty i
 
-instance Pretty TranslationUnit where
-  pretty (TranslationUnit decls) =
-    vcat (map pretty decls)
+-- instance Pretty Initializer where
+--   pretty (InitExpr expr) = pretty expr
 
-instance Pretty Statement where
-  pretty (Jump j)            = pretty j
-  pretty (ExprStmt Nothing)  = semi
-  pretty (ExprStmt (Just e)) = pretty e <> semi
+-- instance Pretty LocalVariable where
+--   pretty (LocalVariable ty i Nothing)    = pretty ty <+> pretty i <> semi
+--   pretty (LocalVariable ty i (Just ini)) =
+--     pretty ty <+> pretty i <+> char '=' <+> pretty ini <> semi
 
-instance Pretty Jump where
-  pretty (Goto i)          = text "goto" <+> pretty i <> semi
-  pretty Continue          = text "continue" <> semi
-  pretty Break             = text "break" <> semi
-  pretty (Return Nothing)  = text "return" <> semi
-  pretty (Return (Just e)) = text "return" <+> pretty e <> semi
+-- instance Pretty Type where
+--   pretty (Type d l c v) = pretty c <+> pretty v <+> pretty l <+> pretty d
+
+-- instance Pretty GlobalVar where
+--   pretty (GlobalVar i ty Nothing)    = pretty ty <+> pretty i <> semi
+--   pretty (GlobalVar i ty (Just ini)) =
+--     pretty ty <+> pretty i <+> char '=' <+> pretty ini <> semi
+
+-- instance Pretty FunctionPrototype where
+--   pretty (Prototype ty i ps) =
+--     pretty ty <+> pretty i <>
+--     char '(' <>
+--     (hsep (punctuate comma (map pretty ps))) <>
+--     char ')' <> semi
+
+-- instance Pretty FunctionDefinition where
+--   pretty (Function ty i ps b) =
+--     pretty ty <+> pretty i <>
+--     char '(' <>
+--     (hsep (punctuate comma(map pretty ps))) <>
+--     char ')' $+$
+--     lbrace $+$
+--     nest 4 (vcat $ map pretty (bodyLocals b)) $+$
+--     nest 4 (vcat $ map pretty (bodyStmts b)) $+$
+--     rbrace
+
+-- instance Pretty ExternalDeclaration where
+--   pretty (FunctionDefinition f) = pretty f
+--   pretty (GlobalDeclaration d) = pretty d
+
+-- instance Pretty TranslationUnit where
+--   pretty (TranslationUnit decls) =
+--     vcat (map pretty decls)
+
+-- instance Pretty Statement where
+--   pretty (Jump j)            = pretty j
+--   pretty (ExprStmt Nothing)  = semi
+--   pretty (ExprStmt (Just e)) = pretty e <> semi
+
+-- instance Pretty Jump where
+--   pretty (Goto i)          = text "goto" <+> pretty i <> semi
+--   pretty Continue          = text "continue" <> semi
+--   pretty Break             = text "break" <> semi
+--   pretty (Return Nothing)  = text "return" <> semi
+--   pretty (Return (Just e)) = text "return" <+> pretty e <> semi
 
 instance Pretty Expr where
-  pretty (Or e0 e1)         = pretty e0 <+> text "||" <+> pretty e1
-  pretty (And e0 e1)        = pretty e0 <+> text "&&" <+> pretty e1
-  pretty (BitwiseOr e0 e1)  = pretty e0 <+> text "|" <+> pretty e1
-  pretty (BitwiseAnd e0 e1) = pretty e0 <+> text "&" <+> pretty e1
-  pretty (Xor e0 e1)        = pretty e0 <+> text "^" <+> pretty e1
-  pretty (CondExpr cnd t f) =
-    pretty cnd <+> char '?' <+> pretty t <+> char ':' <+> pretty f
-  pretty (EqExpr e0 e1)     = pretty e0 <+> text "==" <+> pretty e1
-  pretty (NeqExpr e0 e1)    = pretty e0 <+> text "!=" <+> pretty e1
-  pretty (Lt e0 e1)         = pretty e0 <+> text "<" <+> pretty e1
-  pretty (Gt e0 e1)         = pretty e0 <+> text ">" <+> pretty e1
-  pretty (GtEq e0 e1)       = pretty e0 <+> text ">=" <+> pretty e1
-  pretty (LtEq e0 e1)       = pretty e0 <+> text "<=" <+> pretty e1
-  pretty (ShiftL e0 e1)     = pretty e0 <+> text "<<" <+> pretty e1
-  pretty (ShiftR e0 e1)     = pretty e0 <+> text ">>" <+> pretty e1
-  pretty (AddExpr e0 e1)    = pretty e0 <+> text "+" <+> pretty e1
-  pretty (SubExpr e0 e1)    = pretty e0 <+> text "-" <+> pretty e1
-  pretty (MulExpr e0 e1)    = pretty e0 <+> text "*" <+> pretty e1
-  pretty (DivExpr e0 e1)    = pretty e0 <+> text "/" <+> pretty e1
-  pretty (ModExpr e0 e1)    = pretty e0 <+> text "%" <+> pretty e1
-  pretty (PostfixInc e)     = pretty e <> text "++"
-  pretty (PostfixDec e)     = pretty e <> text "--"
-  pretty (PrefixInc e)      = text "++" <> pretty e
-  pretty (PrefixDec e)      = text "--" <> pretty e
-  pretty (PrimI i)          = pretty i
-  pretty (PrimC c)          = pretty c
-  pretty (Assign lh op rh)  = pretty lh <+> pretty op <+> pretty rh
-  pretty (Neg e)            = char '-' <> pretty e
-  pretty (AddrOf e)         = char '&' <> pretty e
-  pretty (Not e)            = char '!' <> pretty e
-  pretty (Plus e)           = char '+' <> pretty e
-  pretty (Deref e)          = char '*' <> pretty e
-  pretty (Compl e)          = char '~' <> pretty e
+  pPrint (Or e0 e1)         = pPrint e0 <+> text "||" <+> pPrint e1
+  pPrint (And e0 e1)        = pPrint e0 <+> text "&&" <+> pPrint e1
+  pPrint (BitwiseOr e0 e1)  = pPrint e0 <+> text "|" <+> pPrint e1
+  pPrint (BitwiseAnd e0 e1) = pPrint e0 <+> text "&" <+> pPrint e1
+  pPrint (Xor e0 e1)        = pPrint e0 <+> text "^" <+> pPrint e1
+  pPrint (CondExpr cnd t f) =
+    pPrint cnd <+> char '?' <+> pPrint t <+> char ':' <+> pPrint f
+  pPrint (EqExpr e0 e1)     = pPrint e0 <+> text "==" <+> pPrint e1
+  pPrint (NeqExpr e0 e1)    = pPrint e0 <+> text "!=" <+> pPrint e1
+  pPrint (Lt e0 e1)         = pPrint e0 <+> text "<" <+> pPrint e1
+  pPrint (Gt e0 e1)         = pPrint e0 <+> text ">" <+> pPrint e1
+  pPrint (GtEq e0 e1)       = pPrint e0 <+> text ">=" <+> pPrint e1
+  pPrint (LtEq e0 e1)       = pPrint e0 <+> text "<=" <+> pPrint e1
+  pPrint (ShiftL e0 e1)     = pPrint e0 <+> text "<<" <+> pPrint e1
+  pPrint (ShiftR e0 e1)     = pPrint e0 <+> text ">>" <+> pPrint e1
+  pPrint (AddExpr e0 e1)    = pPrint e0 <+> text "+" <+> pPrint e1
+  pPrint (SubExpr e0 e1)    = pPrint e0 <+> text "-" <+> pPrint e1
+  pPrint (MulExpr e0 e1)    = pPrint e0 <+> text "*" <+> pPrint e1
+  pPrint (DivExpr e0 e1)    = pPrint e0 <+> text "/" <+> pPrint e1
+  pPrint (ModExpr e0 e1)    = pPrint e0 <+> text "%" <+> pPrint e1
+  pPrint (PostfixInc e)     = pPrint e <> text "++"
+  pPrint (PostfixDec e)     = pPrint e <> text "--"
+  pPrint (PrefixInc e)      = text "++" <> pPrint e
+  pPrint (PrefixDec e)      = text "--" <> pPrint e
+  pPrint (PrimI i)          = pPrint i
+  pPrint (PrimC c)          = pPrint c
+  pPrint (Assign lh op rh)  = pPrint lh <+> pPrint op <+> pPrint rh
+  pPrint (Neg e)            = char '-' <> pPrint e
+  pPrint (AddrOf e)         = char '&' <> pPrint e
+  pPrint (Not e)            = char '!' <> pPrint e
+  pPrint (Plus e)           = char '+' <> pPrint e
+  pPrint (Deref e)          = char '*' <> pPrint e
+  pPrint (Compl e)          = char '~' <> pPrint e
 
 instance Pretty Op where
-  pretty Equal = char '='
-  pretty MulEq = text "*="
-  pretty DivEq = text "/="
-  pretty ModEq = text "%="
-  pretty AddEq = text "+="
-  pretty SubEq = text "-="
-  pretty ShLEq = text "<<="
-  pretty ShREq = text ">>="
-  pretty AndEq = text "&="
-  pretty XorEq = text "^="
-  pretty OrEq  = text "|="
+  pPrint Equal = char '='
+  pPrint MulEq = text "*="
+  pPrint DivEq = text "/="
+  pPrint ModEq = text "%="
+  pPrint AddEq = text "+="
+  pPrint SubEq = text "-="
+  pPrint ShLEq = text "<<="
+  pPrint ShREq = text ">>="
+  pPrint AndEq = text "&="
+  pPrint XorEq = text "^="
+  pPrint OrEq  = text "|="
+
+instance Pretty Statement where
+  pPrint (Goto i) = text "goto" <+> pPrint i <> semi
+  pPrint Break = text "break;"
+  pPrint Continue = text "continue;"
+  pPrint (Return e) = text "return" <+> (maybe empty pPrint e) <> semi
+  pPrint (ExprStmt e) = (maybe empty pPrint e) <> semi
+  pPrint (Case e s) = text "case" <+> pPrint e <+> char ':' <+> pPrint s
+  pPrint (DefaultStmt s) = text "default:" <+> pPrint s
+  pPrint (LabelStmt i s) = pPrint i <> char ':' <+> pPrint s

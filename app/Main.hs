@@ -15,42 +15,44 @@ import           Kern.AST
 import           Kern.AST.Parser
 import           Kern.Bytecode
 
-main :: IO ()
-main = do
-  args <- getArgs
-  case args of
-    ("--parse":path:[])    -> parseOnly path
-    ("--bytecode":path:[]) -> bytecodeOnly path
-    _                      -> printUsage
+main = undefined
 
-printUsage :: IO ()
-printUsage = do
-    TIO.putStrLn "usage: kern [--parse | --bytecode] FILE"
-    exitWith (ExitFailure 1)
+-- main :: IO ()
+-- main = do
+--   args <- getArgs
+--   case args of
+--     ("--parse":path:[])    -> parseOnly path
+--     ("--bytecode":path:[]) -> bytecodeOnly path
+--     _                      -> printUsage
 
-data StageError = ParseError P.ParseError deriving (Eq, Show)
+-- printUsage :: IO ()
+-- printUsage = do
+--     TIO.putStrLn "usage: kern [--parse | --bytecode] FILE"
+--     exitWith (ExitFailure 1)
 
-parser :: FilePath -> IO (Either StageError TranslationUnit)
-parser path = do
-  c <- TIO.readFile path
-  let res = P.parse translationUnit path c
-  case res of
-    (Left err) -> return (Left $ ParseError err)
-    (Right ok) -> return (Right ok)
+-- data StageError = ParseError P.ParseError deriving (Eq, Show)
 
-parseOnly :: FilePath -> IO ()
-parseOnly path = do
-  p <- parser path
-  case p of
-    Left err -> print err
-    Right ok -> yaml ok
+-- parser :: FilePath -> IO (Either StageError TranslationUnit)
+-- parser path = do
+--   c <- TIO.readFile path
+--   let res = P.parse translationUnit path c
+--   case res of
+--     (Left err) -> return (Left $ ParseError err)
+--     (Right ok) -> return (Right ok)
 
-bytecodeOnly :: FilePath -> IO ()
-bytecodeOnly path = do
-  p <- parser path
-  case p of
-    Left err -> print err
-    Right ok -> yaml $ genTrUnit ok
+-- parseOnly :: FilePath -> IO ()
+-- parseOnly path = do
+--   p <- parser path
+--   case p of
+--     Left err -> print err
+--     Right ok -> yaml ok
 
-yaml :: ToJSON a => a -> IO ()
-yaml x = BS.putStr $ encodePretty defConfig $ toJSON x
+-- bytecodeOnly :: FilePath -> IO ()
+-- bytecodeOnly path = do
+--   p <- parser path
+--   case p of
+--     Left err -> print err
+--     Right ok -> yaml $ genTrUnit ok
+
+-- yaml :: ToJSON a => a -> IO ()
+-- yaml x = BS.putStr $ encodePretty defConfig $ toJSON x
